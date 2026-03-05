@@ -19,6 +19,45 @@ const props = defineProps({
 const textContent = ref('');
 const fontSize = ref(14); // 默认字号 14px
 const textareaRef = ref(null);
+const highlightLayerRef = ref(null);
+const highlightedLines = ref(new Set());
+
+const escapeHtml = (unsafe) => {
+  return (unsafe || '').replace(/[&<>"']/g, function(m) {
+    switch (m) {
+      case '&': return '&amp;';
+      case '<': return '&lt;';
+      case '>': return '&gt;';
+      case '"': return '&quot;';
+      case "'": return '&#039;';
+      default: return m;
+    }
+  });
+};
+
+const highlightedHTML = computed(() => {
+  const lines = textContent.value.split('\n');
+  return lines.map((line, idx) => {
+    const escaped = escapeHtml(line);
+    if (highlightedLines.value.has(idx)) {
+      return `<mark class="highlight-mark">${escaped || ' '}</mark>`;
+    }
+    return escaped;
+  }).join('\n');
+});
+
+const clearHighlight = () => {
+  if (highlightedLines.value.size > 0) {
+    highlightedLines.value.clear();
+  }
+};
+
+const syncScroll = () => {
+  if (textareaRef.value && highlightLayerRef.value) {
+    highlightLayerRef.value.scrollTop = textareaRef.value.scrollTop;
+    highlightLayerRef.value.scrollLeft = textareaRef.value.scrollLeft;
+  }
+};
 
 // -- 历史记录与防抖 --
 const historyStack = ref([]);
@@ -124,6 +163,7 @@ const execUndo = () => {
   
   const prev = historyStack.value[historyStack.value.length - 1];
   textContent.value = prev.text;
+  clearHighlight();
   
   nextTick(() => {
     if (textareaRef.value) {
@@ -141,6 +181,7 @@ const execRedo = () => {
   historyStack.value.push(nextTarget);
   
   textContent.value = nextTarget.text;
+  clearHighlight();
   
   nextTick(() => {
     if (textareaRef.value) {
@@ -163,6 +204,7 @@ const clearContent = () => {
       // 在清空前保存快照以便用户可以通过撤销找回
       saveHistorySnapshot(textContent.value, 0, 0);
       textContent.value = '';
+      clearHighlight();
       saveHistorySnapshot('', 0, 0); // 空状态也需要成为新起点
       message.success('已清空内容');
     },
@@ -197,19 +239,23 @@ const handleConvertState = (targetIdx) => {
   const lines = selectedTextOriginal.split('\n');
   const allPatterns = getAllPatterns();
   
-  let convertedCount = 0;
+  let startLineIdx = 0;
+  for (let i = 0; i < lineStart; i++) {
+    if (rawText[i] === '\n') startLineIdx++;
+  }
   
-  const newLines = lines.map(line => {
-    // 根据要求：不管是匹配成功与否，都要首先去除行首尾的空格
+  let matchedCount = 0;
+  let changedCount = 0;
+  const newHighlights = new Set();
+  
+  const newLines = lines.map((line, idx) => {
     const trimmedLine = line.trim();
-    if (trimmedLine.length === 0) return trimmedLine; // 空行不需要处理
+    if (trimmedLine.length === 0) return trimmedLine; 
 
-    // 去除所有空白，用来做正则匹配校验
     const strippedForMatch = trimmedLine.replace(/[\s\t\u00A0\u200B]+/g, '');
     let matched = false;
     let convertedLine = trimmedLine;
 
-    // 匹配引擎跑起来
     for (const { task, rx } of allPatterns) {
       const m = strippedForMatch.match(rx);
       if (m) {
@@ -224,23 +270,32 @@ const handleConvertState = (targetIdx) => {
       }
     }
     
+    const finalLine = matched ? convertedLine : trimmedLine;
     if (matched) {
-      convertedCount++;
-      return convertedLine;
+      matchedCount++;
     }
-    return trimmedLine;
+    if (finalLine !== line) {
+      changedCount++;
+      newHighlights.add(startLineIdx + idx);
+    }
+    
+    return finalLine;
   });
   
-  if (convertedCount === 0 && lines.some(l => l.trim() !== '')) {
+  if (matchedCount === 0 && lines.some(l => l.trim() !== '')) {
     message.warning('未匹配到相应的规则');
-  } else if (convertedCount > 0) {
-    message.success(`成功转换 ${convertedCount} 行`);
+  } else if (matchedCount > 0) {
+    message.success(`匹配到 ${matchedCount} 行，修改了 ${changedCount} 行`);
   }
 
   const replacementText = newLines.join('\n');
   
-  // 若实质没有改变内容则退出
-  if (selectedTextOriginal === replacementText) return;
+  if (selectedTextOriginal === replacementText) {
+    clearHighlight();
+    return;
+  }
+  
+  highlightedLines.value = newHighlights;
 
   // 记录 Undo
   saveHistorySnapshot(rawText, selStart, selEnd);
@@ -264,6 +319,11 @@ const handleConvertState = (targetIdx) => {
 
 // ─── 快捷键转换机制 ─────────────────────────────────────
 const handleKeyDown = (e) => {
+  // 当发生除修饰键以外的大部分正常输入或移动时，取消高亮
+  if (e.key !== 'Alt' && e.key !== 'Control' && e.key !== 'Shift' && e.key !== 'Meta') {
+    clearHighlight();
+  }
+
   if (e.altKey && e.key >= '1' && e.key <= '9') {
     const idx = parseInt(e.key, 10) - 1;
     if (idx >= 0 && idx < stateNames.value.length) {
@@ -367,7 +427,7 @@ const contextMenuConvert = (idx) => {
       <!-- 头部：标题与清空按钮 -->
       <template #title>
         <div class="card-header">
-          <span class="title-text">自由文本编辑</span>
+          <span class="title-text">操作票编辑</span>
           <a-button type="text" danger @click="clearContent" title="清空全部">
             <template #icon><DeleteOutlined style="font-size: 18px;" /></template>
           </a-button>
@@ -406,13 +466,16 @@ const contextMenuConvert = (idx) => {
 
       <!-- 编辑主体 -->
       <div class="editor-body">
+        <div class="highlight-layer" aria-hidden="true" ref="highlightLayerRef" :style="{ fontSize: `${fontSize}px` }" v-html="highlightedHTML"></div>
         <textarea
           ref="textareaRef"
           v-model="textContent"
           class="custom-textarea"
           :style="{ fontSize: `${fontSize}px` }"
-          placeholder="在此直接输入或粘贴操作步骤文本...&#10;您可以使用上方工具栏或右键菜单直接对所选行进行状态转换。&#10;快捷键提示：使用 Alt + 1/2/3/4 可快速进行状态转换"
+          placeholder="在此直接输入或粘贴操作步骤文本...&#10;您可以使用上方工具栏或右键菜单直接对所选行进行状态转换。&#10;支持开关、刀闸、空开、压板、远方就地的状态转换。&#10;快捷键提示：使用 Alt + 1/2/3/4 可快速进行状态转换"
           @input="onTextareaInput"
+          @click="clearHighlight"
+          @scroll="syncScroll"
           @contextmenu.prevent="handleContextMenu"
           @keydown="handleKeyDown"
         ></textarea>
@@ -524,7 +587,46 @@ const contextMenuConvert = (idx) => {
   background-color: #ffffff;
 }
 
+.highlight-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  padding: 16px;
+  margin: 0;
+  border: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  color: transparent;
+  pointer-events: none;
+  overflow-y: auto;
+  overflow-x: hidden;
+  z-index: 1;
+}
+
+.highlight-layer::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.highlight-layer::-webkit-scrollbar-track {
+  background: transparent;
+}
+.highlight-layer::-webkit-scrollbar-thumb {
+  background-color: transparent;
+}
+
+:deep(.highlight-mark) {
+  background-color: #ff9100; /* 淡橙色 (Tailwind orange-100) */
+  border-radius: 2px;
+  color: transparent;
+}
+
 .custom-textarea {
+  position: relative;
+  z-index: 2;
   flex: 1;
   width: 100%;
   height: 100%;
@@ -538,6 +640,13 @@ const contextMenuConvert = (idx) => {
   outline: none;
   white-space: pre-wrap;
   word-wrap: break-word;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* 修改文字选中状态的背景色，使用半透明蓝色以免完全遮挡底部的绿色高亮 */
+.custom-textarea::selection {
+  background-color: rgba(56, 189, 248, 0.3); /* 半透明的尾风蓝 */
 }
 
 /* 滚动条美化 */

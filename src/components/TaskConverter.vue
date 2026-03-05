@@ -267,7 +267,7 @@ const triggerImport = () => {
     <a-card class="main-card" :bordered="false">
       <template #title>
         <div class="card-header">
-          <span class="title-text">任务状态转换</span>
+          <span class="title-text">操作步骤状态转换</span>
           <a-button type="text" @click="openSettings" title="任务模板配置">
             <template #icon><SettingOutlined style="font-size: 18px; color: #64748b;" /></template>
           </a-button>
