@@ -1,0 +1,66 @@
+{
+    "platTemplates": {
+        "input": "投入{screen}{plat}压板",
+        "exit": "退出{screen}{plat}压板",
+        "checkInput": "检查{screen}{plat}压板确已投入",
+        "checkExit": "检查{screen}{plat}压板确已退出"
+    },
+    "stateNames": [
+        "合上/投入",
+        "拉开/退出",
+        "检查 合上/投入",
+        "检查 拉开/退出"
+    ],
+    "tasks": [
+        {
+            "id": "breaker",
+            "name": "开关",
+            "templates": [
+                "合上{deviceName}开关",
+                "拉开{deviceName}开关",
+                "检查{deviceName}开关三相确在合闸位置（Ia： {n} A，Ib： {n} A，Ic： {n} A）",
+                "检查{deviceName}开关三相确在分闸位置（Ia： {n} A，Ib： {n} A，Ic： {n} A）"
+            ]
+        },
+        {
+            "id": "isolator",
+            "name": "刀闸",
+            "templates": [
+                "合上{deviceName}刀闸",
+                "拉开{deviceName}刀闸",
+                "检查{deviceName}刀闸三相确已合上",
+                "检查{deviceName}刀闸三相确已拉开"
+            ]
+        },
+        {
+            "id": "mcb",
+            "name": "空开",
+            "templates": [
+                "合上{deviceName}空开",
+                "分开{deviceName}空开",
+                "检查{deviceName}空开确已合上",
+                "检查{deviceName}空开确已分开"
+            ]
+        },
+        {
+            "id": "remote_local",
+            "name": "远方/就地",
+            "templates": [
+                "将{deviceName}\"远方/就地\"切换开关由\"远方\"位置切至\"就地\"位置",
+                "将{deviceName}\"远方/就地\"切换开关由\"就地\"位置切至\"远方\"位置",
+                "检查{deviceName}\"远方/就地\"切换开关确已切至\"就地\"位置",
+                "检查{deviceName}\"远方/就地\"切换开关确已切至\"远方\"位置"
+            ]
+        },
+        {
+            "id": "plat",
+            "name": "压板",
+            "templates": [
+                "投入{deviceName}压板",
+                "退出{deviceName}压板",
+                "检查{deviceName}压板确已投入",
+                "检查{deviceName}压板确已退出"
+            ]
+        }
+    ]
+}
