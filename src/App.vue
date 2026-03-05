@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue';
 import defaultData from './templates/ticket_template.json';
 import PlatGenerator from './components/PlatGenerator.vue';
 import TaskConverter from './components/TaskConverter.vue';
+import TicketEditor from './components/TicketEditor.vue';
 
 const defaultTasks = defaultData.tasks;
 const tasks = ref([...defaultTasks]);
@@ -28,11 +29,14 @@ const handleSaveTasks = (newTasks, newStateNames) => {
 <template>
   <div class="app-container">
     <a-tabs class="main-tabs" centered size="large">
-      <a-tab-pane key="plat" tab="压板生成">
-        <PlatGenerator />
+      <a-tab-pane key="editor" tab="文本编辑">
+        <TicketEditor :tasks="tasks" />
       </a-tab-pane>
       <a-tab-pane key="task" tab="任务状态转换">
         <TaskConverter :tasks="tasks" :on-save-tasks="handleSaveTasks" />
+      </a-tab-pane>
+      <a-tab-pane key="plat" tab="压板生成">
+        <PlatGenerator />
       </a-tab-pane>
     </a-tabs>
   </div>

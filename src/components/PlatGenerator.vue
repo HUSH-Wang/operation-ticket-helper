@@ -36,6 +36,15 @@ onMounted(() => {
 // ─── Logic ───────────────────────────────────────────────
 const escapeRegex = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+// ─── 行级缓存 ────────────────────────────────────────────
+// 缓存 key 由"操作类型 + 屏名 + 4条模板"拼接，任意配置变化时自动失效
+const basicLineCache = new Map();   // platLine    -> { text, matched }
+const parseLineCache = new Map();   // strippedLine -> { text, matched }
+let lastConfigKey = null;
+const getConfigKey = () =>
+  [operationType.value, screenName.value,
+   templates.input, templates.exit, templates.checkInput, templates.checkExit].join('\x01');
+
 const removeInlineSpaces = () => {
   if (platText.value) {
     platText.value = platText.value.split('\n')
@@ -46,6 +55,14 @@ const removeInlineSpaces = () => {
 };
 
 const generateText = () => {
+  // ── 配置变化时清空缓存 ──
+  const currentConfigKey = getConfigKey();
+  if (currentConfigKey !== lastConfigKey) {
+    basicLineCache.clear();
+    parseLineCache.clear();
+    lastConfigKey = currentConfigKey;
+  }
+
   const currentTemplate = templates[operationType.value];
   const screen = screenName.value.replace(/[\s\t\u00A0\u200B]+/g, '');
   const screenForReplace = screenName.value.trim();
@@ -58,11 +75,18 @@ const generateText = () => {
       .map(line => line.trim())
       .filter(line => line.length > 0);
     for (const line of lines) {
-      const text = currentTemplate
-        .replace(/{screen}/g, screenForReplace)
-        .replace(/{plat}/g, line)
-        .replace(/{n}/g, '');
-      resultLines.push({ text, matched: true });
+      if (basicLineCache.has(line)) {
+        // 此行内容未变化，直接复用缓存结果
+        resultLines.push(basicLineCache.get(line));
+      } else {
+        const text = currentTemplate
+          .replace(/{screen}/g, screenForReplace)
+          .replace(/{plat}/g, line)
+          .replace(/{n}/g, '');
+        const entry = { text, matched: true };
+        basicLineCache.set(line, entry);
+        resultLines.push(entry);
+      }
     }
   } else {
     const rawLines = parseText.value.split('\n')
@@ -76,32 +100,49 @@ const generateText = () => {
       return;
     }
 
-    const regexes = Object.values(templates).map(t => {
-      let r = t.replace(/\{n\}/g, '\x00NUM\x00').replace(/[\s\t\u00A0\u200B]+/g, '');
-      r = escapeRegex(r);
-      r = r.replace(/\\\{screen\\\}/g, escapeRegex(screen));
-      r = r.replace(/\\\{plat\\\}/g, '(.+)');
-      r = r.replace(/\x00NUM\x00/g, '\\d*');
-      return new RegExp('^' + r + '$');
-    });
+    // 正则懒初始化：只在有缓存未命中时才真正构建
+    let regexes = null;
+    const getRegexes = () => {
+      if (!regexes) {
+        regexes = Object.values(templates).map(t => {
+          let r = t.replace(/\{n\}/g, '\x00NUM\x00').replace(/[\s\t\u00A0\u200B]+/g, '');
+          r = escapeRegex(r);
+          r = r.replace(/\\\{screen\\\}/g, escapeRegex(screen));
+          r = r.replace(/\\\{plat\\\}/g, '(.+)');
+          r = r.replace(/\x00NUM\x00/g, '\\d*');
+          return new RegExp('^' + r + '$');
+        });
+      }
+      return regexes;
+    };
 
     let unmatchedCount = 0;
     for (const line of rawLines) {
-      let platName = null;
-      for (const rx of regexes) {
-        const m = line.match(rx);
-        if (m && m[1]) { platName = m[1]; break; }
-      }
-      if (platName) {
-        const text = currentTemplate
-          .replace(/{screen}/g, screenForReplace)
-          .replace(/{plat}/g, platName)
-          .replace(/{n}/g, '');
-        resultLines.push({ text, matched: true });
+      if (parseLineCache.has(line)) {
+        // 此行内容未变化，直接复用缓存结果
+        const cached = parseLineCache.get(line);
+        if (!cached.matched) unmatchedCount++;
+        resultLines.push(cached);
       } else {
-        // 未匹配：原样保留，标黄显示
-        resultLines.push({ text: line, matched: false });
-        unmatchedCount++;
+        let platName = null;
+        for (const rx of getRegexes()) {
+          const m = line.match(rx);
+          if (m && m[1]) { platName = m[1]; break; }
+        }
+        let entry;
+        if (platName) {
+          const text = currentTemplate
+            .replace(/{screen}/g, screenForReplace)
+            .replace(/{plat}/g, platName)
+            .replace(/{n}/g, '');
+          entry = { text, matched: true };
+        } else {
+          // 未匹配：原样保留，标黄显示
+          entry = { text: line, matched: false };
+          unmatchedCount++;
+        }
+        parseLineCache.set(line, entry);
+        resultLines.push(entry);
       }
     }
 
@@ -195,7 +236,7 @@ const triggerImport = () => {
     <a-card class="main-card" :bordered="false">
       <template #title>
         <div class="card-header">
-          <span class="title-text">压板文本生成工具</span>
+          <span class="title-text">保护压板文本生成</span>
           <a-button type="text" @click="openSettings" title="模板配置">
             <template #icon><SettingOutlined style="font-size: 18px; color: #64748b;" /></template>
           </a-button>

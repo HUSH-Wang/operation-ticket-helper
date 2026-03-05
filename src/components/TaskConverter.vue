@@ -39,6 +39,13 @@ const activeTaskKeys = ref([]);
 // ─── 核心：正则工具 ───────────────────────────────────────
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+// ─── 行级缓存 ────────────────────────────────────────────
+// key: 去空白后的行文本；value: { result: {text,matched}, logEntry: {...}|null }
+// 当目标状态或任务模板变化时清空缓存
+const lineResultCache = new Map();
+let lastConfigKey = null;
+const getConfigKey = () => toStateIdx.value + '\x01' + JSON.stringify(props.tasks);
+
 // 展位符列表：除 {n} 外均使用命名捕获组
 // 在模板字符串中可用 {deviceName} / {a} / {b} / {c} 等任意单小写字母占位符
 const PLACEHOLDER_RE = /\{([a-z][a-zA-Z0-9]*)\}/g;
@@ -70,6 +77,13 @@ const renderTemplate = (template, captures) => {
 
 // ─── 转换逻辑 ────────────────────────────────────────────
 const convert = () => {
+  // ── 配置变化时清空缓存 ──
+  const currentConfigKey = getConfigKey();
+  if (currentConfigKey !== lastConfigKey) {
+    lineResultCache.clear();
+    lastConfigKey = currentConfigKey;
+  }
+
   const lines = inputText.value
     .split('\n')
     .map(l => l.trim())
@@ -83,41 +97,58 @@ const convert = () => {
   }
 
   const targetIdx = toStateIdx.value;
-  // resultLines: [{text: string, matched: boolean}]
   const resultLines = [];
   const log = [];
 
-  // 预构建所有 (task × stateIdx) 的匹配模式
-  const allPatterns = [];
-  for (const task of props.tasks) {
-    for (let si = 0; si < (task.templates || []).length; si++) {
-      const tmpl = task.templates[si];
-      if (!tmpl) continue;
-      try {
-        allPatterns.push({ task, si, rx: buildParseRegex(tmpl) });
-      } catch { /* skip bad regex */ }
+  // allPatterns 懒初始化：只在有缓存未命中时才构建
+  let allPatterns = null;
+  const getPatterns = () => {
+    if (!allPatterns) {
+      allPatterns = [];
+      for (const task of props.tasks) {
+        for (let si = 0; si < (task.templates || []).length; si++) {
+          const tmpl = task.templates[si];
+          if (!tmpl) continue;
+          try {
+            allPatterns.push({ task, si, rx: buildParseRegex(tmpl) });
+          } catch { /* skip bad regex */ }
+        }
+      }
     }
-  }
+    return allPatterns;
+  };
 
   for (const line of lines) {
     const stripped = line.replace(/[\s\t\u00A0\u200B]+/g, '');
-    let matched = false;
 
-    for (const { task, si, rx } of allPatterns) {
-      // ── 常规模板匹配 ──
+    if (lineResultCache.has(stripped)) {
+      // 此行内容未变化，直接复用缓存结果（跳过所有正则匹配）
+      const cached = lineResultCache.get(stripped);
+      resultLines.push(cached.result);
+      if (cached.logEntry) log.push(cached.logEntry);
+      continue;
+    }
+
+    let matched = false;
+    let cacheEntry = null;
+
+    for (const { task, si, rx } of getPatterns()) {
       const m = stripped.match(rx);
       if (m) {
         const captures = {};
         if (m.groups) Object.assign(captures, m.groups);
         const targetTmpl = (task.templates || [])[targetIdx];
         if (targetTmpl) {
-          resultLines.push({ text: renderTemplate(targetTmpl, captures), matched: true });
-          log.push({
+          const result = { text: renderTemplate(targetTmpl, captures), matched: true };
+          const logEntry = {
             line,
             taskName: task.name,
             fromState: stateNames.value[si] ?? `状态${si + 1}`,
             toState: stateNames.value[targetIdx] ?? `状态${targetIdx + 1}`,
-          });
+          };
+          cacheEntry = { result, logEntry };
+          resultLines.push(result);
+          log.push(logEntry);
           matched = true;
           break;
         }
@@ -126,8 +157,12 @@ const convert = () => {
 
     if (!matched) {
       // 未匹配：原样保留，标记为 unmatched——展示时标黄
-      resultLines.push({ text: line, matched: false });
+      const result = { text: line, matched: false };
+      cacheEntry = { result, logEntry: null };
+      resultLines.push(result);
     }
+
+    lineResultCache.set(stripped, cacheEntry);
   }
 
   errorMsg.value = '';
