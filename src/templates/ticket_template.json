@@ -18,8 +18,8 @@
             "templates": [
                 "合上{deviceName}开关",
                 "拉开{deviceName}开关",
-                "检查{deviceName}开关三相确在合闸位置（Ia： {n} A，Ib： {n} A，Ic： {n} A）",
-                "检查{deviceName}开关三相确在分闸位置（Ia： {n} A，Ib： {n} A，Ic： {n} A）"
+                "检查{deviceName}开关三相确在合闸位置（Ia：{n}、Ib：{n}、Ic：{n}A）",
+                "检查{deviceName}开关三相确在分闸位置（Ia：{n}、Ib：{n}、Ic：{n}A）"
             ]
         },
         {

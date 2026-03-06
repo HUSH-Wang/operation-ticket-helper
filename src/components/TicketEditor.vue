@@ -91,7 +91,13 @@ const buildParseRegex = (template) => {
     .replace(PLACEHOLDER_RE, (_, name) => `\x00PH_${name}\x00`)
     .replace(/[\s\t\u00A0\u200B]+/g, '');
   r = escapeRegex(r);
-  r = r.replace(/\x00NUM\x00/g, '\\d*');
+  
+  // 兼容中英文符号差异
+  r = r.replace(/\\\(|\\\)|[（），、:：]/g, '[()（），、:：]*');
+  // 兼容单位 A 和 小数
+  r = r.replace(/\x00NUM\x00A?/g, '[\\d.]*A?');
+  
+  r = r.replace(/\x00NUM\x00/g, '[\\d.]*');
   r = r.replace(/\x00PH_([a-zA-Z0-9]+)\x00/g, (_, name) => `(?<${name}>.+?)`);
   return new RegExp('^' + r + '$');
 };
@@ -103,7 +109,7 @@ const renderTemplate = (template, captures) => {
       result = result.replace(new RegExp(`\\{${key}\\}`, 'g'), val);
     }
   }
-  return result.replace(/\{n\}/g, '');
+  return result.replace(/\{n\}/g, '   ');
 };
 
 // 获取所有的待匹配正则项

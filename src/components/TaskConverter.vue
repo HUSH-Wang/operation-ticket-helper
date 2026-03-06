@@ -58,8 +58,14 @@ const buildParseRegex = (template) => {
     .replace(/[\s\t\u00A0\u200B]+/g, '');
   // Step2: 转义其予内容
   r = escapeRegex(r);
+  
+  // 兼容中英文符号差异
+  r = r.replace(/\\\(|\\\)|[（），、:：]/g, '[()（），、:：]*');
+  // 兼容单位 A 和 小数
+  r = r.replace(/\x00NUM\x00A?/g, '[\\d.]*A?');
+  
   // Step3: 还原占位符为命名捕获组 / 数字通配
-  r = r.replace(/\x00NUM\x00/g, '\\d*');
+  r = r.replace(/\x00NUM\x00/g, '[\\d.]*');
   r = r.replace(/\x00PH_([a-zA-Z0-9]+)\x00/g, (_, name) => `(?<${name}>.+?)`);
   return new RegExp('^' + r + '$');
 };
@@ -72,7 +78,7 @@ const renderTemplate = (template, captures) => {
       result = result.replace(new RegExp(`\\{${key}\\}`, 'g'), val);
     }
   }
-  return result.replace(/\{n\}/g, '');
+  return result.replace(/\{n\}/g, '   ');
 };
 
 // ─── 转换逻辑 ────────────────────────────────────────────
@@ -342,7 +348,7 @@ const triggerImport = () => {
       <div class="settings-hint">
         <p>
           占位符：<code>{deviceName}</code> 设备名称 &nbsp;|&nbsp;
-          <code>{n}</code> 数值通配符（解析时匹配任意数字，生成时为空）
+          <code>{n}</code> 数值通配符（解析时匹配任意数字及空格，生成时为4个空格）
         </p>
       </div>
 
