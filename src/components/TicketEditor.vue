@@ -9,6 +9,7 @@ import {
 } from '@ant-design/icons-vue';
 import { message, Modal } from 'ant-design-vue';
 import defaultData from '../templates/ticket_template.json';
+import { buildParseRegex, renderTemplate, clearVoltageCurrentText } from '../utils/textUtils';
 
 // ─── Props ─────────────────────────────────────────
 const props = defineProps({
@@ -80,37 +81,6 @@ const contextMenuRef = ref(null); // 指向菜单 DOM 节点
 
 // 从 ticket_template.json 读取作为默认 fallback，再从 localStorage 中恢复
 const stateNames = ref([...defaultData.stateNames]);
-
-// ─── 正则工具 (复用自 TaskConverter.vue) ────────────────
-const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const PLACEHOLDER_RE = /\{([a-z][a-zA-Z0-9]*)\}/g;
-
-const buildParseRegex = (template) => {
-  let r = template
-    .replace(/\{n\}/g, '\x00NUM\x00')
-    .replace(PLACEHOLDER_RE, (_, name) => `\x00PH_${name}\x00`)
-    .replace(/[\s\t\u00A0\u200B]+/g, '');
-  r = escapeRegex(r);
-  
-  // 兼容中英文符号差异
-  r = r.replace(/\\\(|\\\)|[（），、:：]/g, '[()（），、:：]*');
-  // 兼容单位 A 和 小数
-  r = r.replace(/\x00NUM\x00A?/g, '[\\d.]*A?');
-  
-  r = r.replace(/\x00NUM\x00/g, '[\\d.]*');
-  r = r.replace(/\x00PH_([a-zA-Z0-9]+)\x00/g, (_, name) => `(?<${name}>.+?)`);
-  return new RegExp('^' + r + '$');
-};
-
-const renderTemplate = (template, captures) => {
-  let result = template;
-  for (const [key, val] of Object.entries(captures)) {
-    if (val !== undefined) {
-      result = result.replace(new RegExp(`\\{${key}\\}`, 'g'), val);
-    }
-  }
-  return result.replace(/\{n\}/g, '   ');
-};
 
 // 获取所有的待匹配正则项
 const getAllPatterns = () => {
@@ -423,6 +393,26 @@ const contextMenuConvert = (idx) => {
   hideContextMenu();
 };
 
+const clearVoltageCurrent = () => {
+  if (!textContent.value) return;
+  const oldText = textContent.value;
+  const newText = clearVoltageCurrentText(oldText);
+
+  if (oldText !== newText) {
+    const el = textareaRef.value;
+    saveHistorySnapshot(oldText, el ? el.selectionStart : 0, el ? el.selectionEnd : 0);
+    textContent.value = newText;
+    nextTick(() => {
+      if (textareaRef.value) {
+        saveHistorySnapshot(newText, textareaRef.value.selectionStart, textareaRef.value.selectionEnd);
+      }
+    });
+    message.success('已清空电压电流数值');
+  } else {
+    message.info('没有匹配到需要清空的电压电流内容');
+  }
+};
+
 // TODO: 方法声明 (字号调整、清除、撤销、重做、转换)
 
 </script>
@@ -460,6 +450,8 @@ const contextMenuConvert = (idx) => {
                 <a-button @click="execRedo" :disabled="redoStack.length === 0"><template #icon><RedoOutlined /></template></a-button>
               </a-tooltip>
             </a-button-group>
+
+            <a-button @click="clearVoltageCurrent">清空电压电流</a-button>
             
             <a-button-group class="action-buttons">
               <a-button v-for="(name, idx) in stateNames" :key="idx" type="default" @click="handleConvertState(idx)">

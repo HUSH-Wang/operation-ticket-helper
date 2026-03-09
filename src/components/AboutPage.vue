@@ -31,6 +31,7 @@ import hushImg from '../assets/hushDataUrl';
         <ul class="feature-list">
           <li><strong>沉浸式编辑</strong>：在宽大的文本框内自由输入或粘贴全部操作步骤，网页自带记忆功能，每10秒自动保存，刷新不丢失。</li>
           <li><strong>快捷状态转换</strong>：选中需要修改的行（或将光标停留在此行），点击上方按钮、点击右键菜单、或使用快捷键 <code>Alt + 1/2/3/4</code>，即可将此行语句就地转化为其他状态格式。</li>
+          <li><strong>一键清空数值</strong>：提供“清空电压电流”功能，快速将括号中的实测电压、电流数值替换为标准的三空格，并智能统一中英文括号及标点符号。</li>
           <li><strong>撤销与重做</strong>：支持完备的历史记录撤回（快捷栏按钮或右键），防止误操作。</li>
           <li><strong>阅读体验优化</strong>：可随时调大或调小编辑器字号以适配阅读。</li>
         </ul>
@@ -40,6 +41,7 @@ import hushImg from '../assets/hushDataUrl';
         <h3 class="feature-title"><SwapOutlined class="feature-icon" /> 步骤转换</h3>
         <ul class="feature-list">
           <li><strong>智能识别</strong>：对于收集来的大段杂乱文本，一键粘贴，系统能跨越换行和空格隔阂，聪明地识别出这是刀闸、开关还是压板，且当前属于什么状态。</li>
+          <li><strong>辅助数据过滤</strong>：新增“清空电压电流”快捷功能，在转换前就可快速将复杂测量数据过滤为标准空格填充位。</li>
           <li><strong>全自动转换</strong>：选中目标后系统一次性将识别出的所有语句统一整理输出，无法匹配的部分将以浅黄色高亮提示。</li>
           <li><strong>定制灵活</strong>：允许深度的自定义模板配置（点击右上角设置图标），支持导出 JSON 配置文件分享给同事跨设备使用。</li>
         </ul>
@@ -65,6 +67,7 @@ import hushImg from '../assets/hushDataUrl';
           <ul class="log-list">
             <li>上线全新「操作票编辑」界面：支持实时高亮修改结果、无限次撤销重做、以及完备的快捷键沉浸体验。</li>
             <li>增强正则兼容模式：深度优化模板解析引擎，支持模糊匹配全半角括号以及顿号与逗号；容忍单位和空格的不一致缺陷，提升转换成功率。</li>
+            <li>新增实用数据处理：在编辑与转换页面添加“清空电压电流”功能，一键净化排版，智能修复中英夹杂的符号。</li>
             <li>UI改版：各组件面板布局统一美化，重构“关于”为使用说明聚合页。</li>
           </ul>
         </a-timeline-item>

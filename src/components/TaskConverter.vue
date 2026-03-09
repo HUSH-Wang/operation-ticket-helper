@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted } from 'vue';
 import { SettingOutlined, CopyOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons-vue';
 import { message, Modal } from 'ant-design-vue';
 import defaultData from '../templates/ticket_template.json';
+import { buildParseRegex, renderTemplate, clearVoltageCurrentText } from '../utils/textUtils';
 
 const props = defineProps({
   tasks: { type: Array, required: true },
@@ -36,49 +37,18 @@ const editingStateNames = ref([]);
 const editingTasks = ref([]);
 const activeTaskKeys = ref([]);
 
-// ─── 核心：正则工具 ───────────────────────────────────────
-const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
 // ─── 行级缓存 ────────────────────────────────────────────
-// key: 去空白后的行文本；value: { result: {text,matched}, logEntry: {...}|null }
+// key:去空白后的行文本；value: { result: {text,matched}, logEntry: {...}|null }
 // 当目标状态或任务模板变化时清空缓存
 const lineResultCache = new Map();
 let lastConfigKey = null;
 const getConfigKey = () => toStateIdx.value + '\x01' + JSON.stringify(props.tasks);
 
-// 展位符列表：除 {n} 外均使用命名捕获组
-// 在模板字符串中可用 {deviceName} / {a} / {b} / {c} 等任意单小写字母占位符
-const PLACEHOLDER_RE = /\{([a-z][a-zA-Z0-9]*)\}/g;
-
-const buildParseRegex = (template) => {
-  // Step1: 保护 {n} 和各占位符, 去除空白
-  let r = template
-    .replace(/\{n\}/g, '\x00NUM\x00')
-    .replace(PLACEHOLDER_RE, (_, name) => `\x00PH_${name}\x00`)
-    .replace(/[\s\t\u00A0\u200B]+/g, '');
-  // Step2: 转义其予内容
-  r = escapeRegex(r);
-  
-  // 兼容中英文符号差异
-  r = r.replace(/\\\(|\\\)|[（），、:：]/g, '[()（），、:：]*');
-  // 兼容单位 A 和 小数
-  r = r.replace(/\x00NUM\x00A?/g, '[\\d.]*A?');
-  
-  // Step3: 还原占位符为命名捕获组 / 数字通配
-  r = r.replace(/\x00NUM\x00/g, '[\\d.]*');
-  r = r.replace(/\x00PH_([a-zA-Z0-9]+)\x00/g, (_, name) => `(?<${name}>.+?)`);
-  return new RegExp('^' + r + '$');
-};
-
-// captures: { deviceName: '...', a: '...', b: '...', ... }
-const renderTemplate = (template, captures) => {
-  let result = template;
-  for (const [key, val] of Object.entries(captures)) {
-    if (val !== undefined) {
-      result = result.replace(new RegExp(`\\{${key}\\}`, 'g'), val);
-    }
-  }
-  return result.replace(/\{n\}/g, '   ');
+// ─── 清空电压电流 ────────────────────────────────────────
+const clearVoltageCurrent = () => {
+  if (!inputText.value) return;
+  inputText.value = clearVoltageCurrentText(inputText.value);
+  message.success('已清空电压电流数值');
 };
 
 // ─── 转换逻辑 ────────────────────────────────────────────
@@ -291,7 +261,13 @@ const triggerImport = () => {
         </a-form-item>
 
         <!-- 输入文本 -->
-        <a-form-item label="输入文本（支持多行、多任务混合粘贴，自动识别来源）">
+        <a-form-item>
+          <template #label>
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+              <span>输入文本（支持多行、多任务混合粘贴，自动识别来源）</span>
+              <a-button size="small" @click="clearVoltageCurrent">清空电压电流</a-button>
+            </div>
+          </template>
           <a-textarea
             v-model:value="inputText"
             placeholder="粘贴任意状态下的操作步骤文本，每行一条，系统将自动识别任务和来源状态..."
