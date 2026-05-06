@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import { 
   FormOutlined,
   SwapOutlined,
@@ -61,7 +61,19 @@ import hushImg from '../assets/hushDataUrl';
       <a-timeline>
         <a-timeline-item color="green">
           <p class="log-version">
-            <span>v0.2 (当前版本)</span>
+            <span>v0.3 (当前版本)</span>
+            <span class="log-date">2026.05.06</span>
+          </p>
+          <ul class="log-list">
+            <li>远方/就地规则更新：检查步骤采用“确在”新写法，同时继续兼容“确已切至”等旧写法，转换输出统一为最新模板。</li>
+            <li>模板规则增强：步骤转换支持主模板与兼容模板的数组结构，便于后续持续扩展多种历史写法。</li>
+            <li>新增规则重置：步骤转换和压板文本的设置框均支持一键恢复内置默认规则，保存后即可覆盖本地自定义配置。</li>
+            <li>工程整理：补充 TypeScript 入口和类型定义，提升构建检查与后续维护体验。</li>
+          </ul>
+        </a-timeline-item>
+        <a-timeline-item color="blue">
+          <p class="log-version">
+            <span>v0.2</span>
             <span class="log-date">2026.03.06</span>
           </p>
           <ul class="log-list">

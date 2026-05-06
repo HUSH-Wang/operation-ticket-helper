@@ -1,15 +1,17 @@
 // ─── 正则与文本处理工具库 ────────────────────────────────────────
 
-const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const escapeRegex = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // 占位符列表：除 {n} 外均使用命名捕获组
 // 在模板字符串中可用 {deviceName} / {a} / {b} / {c} 等任意单小写字母占位符
 const PLACEHOLDER_RE = /\{([a-z][a-zA-Z0-9]*)\}/g;
 
+export type TemplateEntry = string | string[];
+
 /**
  * 获取用于输出渲染的主模板：字符串直接使用，数组使用第一项。
  */
-export const getPrimaryTemplate = (templateEntry) => {
+export const getPrimaryTemplate = (templateEntry: TemplateEntry | undefined): string => {
     if (Array.isArray(templateEntry)) {
         return templateEntry[0] ?? '';
     }
@@ -19,9 +21,9 @@ export const getPrimaryTemplate = (templateEntry) => {
 /**
  * 获取用于解析匹配的全部模板变体：字符串为单一变体，数组为主模板+兼容模板。
  */
-export const getTemplateVariants = (templateEntry) => {
+export const getTemplateVariants = (templateEntry: TemplateEntry | undefined): string[] => {
     if (Array.isArray(templateEntry)) {
-        return templateEntry.filter((template) => typeof template === 'string' && template.trim().length > 0);
+        return templateEntry.filter((template): template is string => typeof template === 'string' && template.trim().length > 0);
     }
     if (typeof templateEntry === 'string' && templateEntry.trim().length > 0) {
         return [templateEntry];
@@ -34,7 +36,7 @@ export const getTemplateVariants = (templateEntry) => {
  * @param {string} template 模板字符串
  * @returns {RegExp} 构建的正则表达式
  */
-export const buildParseRegex = (template) => {
+export const buildParseRegex = (template: string): RegExp => {
     // Step1: 保护 {n} 和各占位符, 去除空白
     let r = template
         .replace(/\{n\}/g, '\x00NUM\x00')
@@ -60,7 +62,7 @@ export const buildParseRegex = (template) => {
  * @param {Object} captures 捕获的数据对象
  * @returns {string} 渲染后的字符串
  */
-export const renderTemplate = (template, captures) => {
+export const renderTemplate = (template: string, captures: Record<string, string | undefined>): string => {
     let result = template;
     for (const [key, val] of Object.entries(captures)) {
         if (val !== undefined) {
@@ -75,9 +77,9 @@ export const renderTemplate = (template, captures) => {
  * @param {string} text 原始文本
  * @returns {string} 清洗后的文本
  */
-export const clearVoltageCurrentText = (text) => {
+export const clearVoltageCurrentText = (text: string): string => {
     if (!text) return text;
-    return text.replace(/[(（](.*?)[)）]/g, (match, inner) => {
+    return text.replace(/[(（](.*?)[)）]/g, (_, inner) => {
         let processed = inner.replace(/:/g, '：').replace(/,/g, '，');
         processed = processed.replace(/\s*[+-]?\d+(?:\.\d+)?\s*/g, '   ');
         return `（${processed}）`;

@@ -1,12 +1,12 @@
 {
-  "name": "操作票助手",
+  "name": "operation-ticket-helper",
   "private": true,
-  "version": "0.2",
+  "version": "0.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "build:single": "vite build --mode singlefile",
+    "build": "vue-tsc && vite build",
+    "build:single": "vue-tsc && vite build --mode singlefile",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -15,8 +15,11 @@
     "vue": "^3.5.25"
   },
   "devDependencies": {
+    "@types/node": "^25.3.5",
     "@vitejs/plugin-vue": "^6.0.2",
+    "typescript": "^5.9.3",
     "vite": "^7.3.1",
-    "vite-plugin-singlefile": "^2.3.0"
+    "vite-plugin-singlefile": "^2.3.0",
+    "vue-tsc": "^3.2.5"
   }
 }

@@ -1,17 +1,25 @@
-<script setup>
-import { ref, computed, watch, onMounted } from 'vue';
-import { SettingOutlined, CopyOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons-vue';
+<script setup lang="ts">
+import { ref, watch, onMounted } from 'vue';
+import { SettingOutlined, CopyOutlined, PlusOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons-vue';
 import { message, Modal } from 'ant-design-vue';
 import defaultData from '../templates/ticket_template.json';
-import { buildParseRegex, renderTemplate, clearVoltageCurrentText } from '../utils/textUtils';
+import {
+  buildParseRegex,
+  renderTemplate,
+  clearVoltageCurrentText,
+  getPrimaryTemplate,
+  getTemplateVariants,
+} from '../utils/textUtils';
 
-const props = defineProps({
-  tasks: { type: Array, required: true },
-  onSaveTasks: { type: Function, required: true },
-});
+import type { Task } from '../App.vue';
+
+const props = defineProps<{
+  tasks: Task[],
+  onSaveTasks: (t: Task[], s: string[]) => void
+}>();
 
 // ─── 全局状态名称 ─────────────────────────────────────────
-const stateNames = ref([...defaultData.stateNames]);
+const stateNames = ref<string[]>([...defaultData.stateNames]);
 
 onMounted(() => {
   const saved = localStorage.getItem('ticketTasks');
@@ -24,24 +32,23 @@ onMounted(() => {
 });
 
 // ─── UI State ────────────────────────────────────────────
-const toStateIdx = ref(0);          // 目标状态索引
-const inputText = ref('');
-const outputText = ref('');
-const outputLines = ref([]);        // [{text, matched}]
-const errorMsg = ref('');
-const matchLog = ref([]);           // [{line, taskName, fromState, toState}]
-const isSettingsVisible = ref(false);
+const toStateIdx = ref<number>(0);          // 目标状态索引
+const inputText = ref<string>('');
+const outputLines = ref<any[]>([]);        // [{text, matched}]
+const errorMsg = ref<string>('');
+const matchLog = ref<any[]>([]);           // [{line, taskName, fromState, toState}]
+const isSettingsVisible = ref<boolean>(false);
 
 // 编辑用
-const editingStateNames = ref([]);
-const editingTasks = ref([]);
-const activeTaskKeys = ref([]);
+const editingStateNames = ref<string[]>([]);
+const editingTasks = ref<Task[]>([]);
+const activeTaskKeys = ref<string[]>([]);
 
 // ─── 行级缓存 ────────────────────────────────────────────
 // key:去空白后的行文本；value: { result: {text,matched}, logEntry: {...}|null }
 // 当目标状态或任务模板变化时清空缓存
-const lineResultCache = new Map();
-let lastConfigKey = null;
+const lineResultCache = new Map<string, any>();
+let lastConfigKey: string | null = null;
 const getConfigKey = () => toStateIdx.value + '\x01' + JSON.stringify(props.tasks);
 
 // ─── 清空电压电流 ────────────────────────────────────────
@@ -77,17 +84,17 @@ const convert = () => {
   const log = [];
 
   // allPatterns 懒初始化：只在有缓存未命中时才构建
-  let allPatterns = null;
+  let allPatterns: { task: Task, si: number, rx: RegExp }[] | null = null;
   const getPatterns = () => {
     if (!allPatterns) {
       allPatterns = [];
       for (const task of props.tasks) {
         for (let si = 0; si < (task.templates || []).length; si++) {
-          const tmpl = task.templates[si];
-          if (!tmpl) continue;
-          try {
-            allPatterns.push({ task, si, rx: buildParseRegex(tmpl) });
-          } catch { /* skip bad regex */ }
+          for (const tmpl of getTemplateVariants(task.templates[si])) {
+            try {
+              allPatterns.push({ task, si, rx: buildParseRegex(tmpl) });
+            } catch { /* skip bad regex */ }
+          }
         }
       }
     }
@@ -111,9 +118,9 @@ const convert = () => {
     for (const { task, si, rx } of getPatterns()) {
       const m = stripped.match(rx);
       if (m) {
-        const captures = {};
+        const captures: Record<string, string | undefined> = {};
         if (m.groups) Object.assign(captures, m.groups);
-        const targetTmpl = (task.templates || [])[targetIdx];
+        const targetTmpl = getPrimaryTemplate((task.templates || [])[targetIdx]);
         if (targetTmpl) {
           const result = { text: renderTemplate(targetTmpl, captures), matched: true };
           const logEntry = {
@@ -146,9 +153,9 @@ const convert = () => {
   matchLog.value = log;
 };
 
-let debounceTimer = null;
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 watch([() => props.tasks, toStateIdx, inputText], () => {
-  clearTimeout(debounceTimer);
+  if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(convert, 300);
 }, { deep: true });
 
@@ -185,7 +192,35 @@ const addTask = () => {
   });
 };
 
-const removeTask = (idx) => {
+const templateEntryToText = (entry: Task['templates'][number] | undefined): string => {
+  if (Array.isArray(entry)) return entry.join('\n');
+  return entry ?? '';
+};
+
+const textToTemplateEntry = (
+  text: string,
+  currentEntry: Task['templates'][number] | undefined,
+): Task['templates'][number] => {
+  const lines = text
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0);
+
+  if (Array.isArray(currentEntry) || lines.length > 1) {
+    return lines;
+  }
+  return lines[0] ?? '';
+};
+
+const updateEditingTemplate = (task: Task, stateIdx: number, value: string) => {
+  task.templates[stateIdx] = textToTemplateEntry(value, task.templates[stateIdx]);
+};
+
+const createEditingTemplateUpdater = (task: Task, stateIdx: number) => {
+  return (value: string) => updateEditingTemplate(task, stateIdx, value);
+};
+
+const removeTask = (idx: number) => {
   Modal.confirm({
     title: '确认删除',
     content: `确定要删除任务「${editingTasks.value[idx].name}」吗？`,
@@ -208,6 +243,20 @@ const saveSettings = () => {
   message.success('任务模板保存成功');
 };
 
+const resetSettingsToDefault = () => {
+  Modal.confirm({
+    title: '重置步骤转换规则',
+    content: '确定要将步骤转换的状态名称和任务模板恢复为内置默认值吗？重置后需点击保存才会生效。',
+    okText: '重置',
+    cancelText: '取消',
+    onOk() {
+      editingStateNames.value = [...defaultData.stateNames];
+      editingTasks.value = JSON.parse(JSON.stringify(defaultData.tasks)) as Task[];
+      message.success('已恢复默认规则，请点击保存生效');
+    },
+  });
+};
+
 // ─── JSON 导出/导入 ──────────────────────────────────────
 const exportTasks = () => {
   const data = { stateNames: editingStateNames.value, tasks: editingTasks.value };
@@ -221,12 +270,14 @@ const exportTasks = () => {
 const triggerImport = () => {
   const fi = document.createElement('input');
   fi.type = 'file'; fi.accept = '.json';
-  fi.onchange = e => {
-    const file = e.target.files[0]; if (!file) return;
+  fi.onchange = (e: Event) => {
+    const target = e.target as HTMLInputElement;
+    const file = target.files?.[0]; if (!file) return;
     const reader = new FileReader();
-    reader.onload = ev => {
+    reader.onload = () => {
       try {
-        const parsed = JSON.parse(ev.target.result);
+        const result = reader.result as string;
+        const parsed = JSON.parse(result);
         if (parsed.stateNames) editingStateNames.value = parsed.stateNames;
         if (Array.isArray(parsed.tasks)) editingTasks.value = parsed.tasks;
         message.success('导入成功，请点击保存生效配置');
@@ -332,7 +383,7 @@ const triggerImport = () => {
         <a-form-item label="全局状态名称（所有任务共用）">
           <a-space wrap>
             <a-input
-              v-for="(name, idx) in editingStateNames"
+              v-for="(_, idx) in editingStateNames"
               :key="idx"
               v-model:value="editingStateNames[idx]"
               :placeholder="`状态 ${idx + 1}`"
@@ -361,7 +412,8 @@ const triggerImport = () => {
               :label="`${stateName} 的模板`"
             >
               <a-textarea
-                v-model:value="task.templates[si]"
+                :value="templateEntryToText(task.templates[si])"
+                @update:value="createEditingTemplateUpdater(task, si)"
                 :rows="2"
                 :placeholder="`例：检查{deviceName}已{n}切换至${stateName}`"
               />
@@ -377,12 +429,16 @@ const triggerImport = () => {
 
       <div class="modal-footer-actions" style="margin-top: 16px;">
         <div>
+          <a-button @click="resetSettingsToDefault">
+            <template #icon><ReloadOutlined /></template>
+            重置规则
+          </a-button>
           <a-button @click="exportTasks">导出 JSON</a-button>
-          <a-button @click="triggerImport" style="margin-left: 8px;">导入 JSON</a-button>
+          <a-button @click="triggerImport">导入 JSON</a-button>
         </div>
         <div>
           <a-button @click="isSettingsVisible = false">取消</a-button>
-          <a-button type="primary" @click="saveSettings" style="margin-left: 8px;">保存</a-button>
+          <a-button type="primary" @click="saveSettings">保存</a-button>
         </div>
       </div>
     </a-modal>
@@ -493,6 +549,11 @@ const triggerImport = () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+.modal-footer-actions > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .error-msg {

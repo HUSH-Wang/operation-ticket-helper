@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import defaultData from './templates/ticket_template.json';
 import PlatGenerator from './components/PlatGenerator.vue';
@@ -12,10 +12,17 @@ import {
   InfoCircleOutlined
 } from '@ant-design/icons-vue';
 import hushImg from './assets/hushDataUrl';
+import type { TemplateEntry } from './utils/textUtils';
 
-const defaultTasks = defaultData.tasks;
-const tasks = ref([...defaultTasks]);
-const currentMenu = ref(['editor']);
+export interface Task {
+  id: string;
+  name: string;
+  templates: TemplateEntry[];
+}
+
+const defaultTasks = defaultData.tasks as Task[];
+const tasks = ref<Task[]>([...defaultTasks]);
+const currentMenu = ref<string[]>(['editor']);
 
 onMounted(() => {
   const saved = localStorage.getItem('ticketTasks');
@@ -23,13 +30,13 @@ onMounted(() => {
     try {
       const parsed = JSON.parse(saved);
       // 新格式: { tasks: [], stateNames: [] }；兼容旧格式（数组）
-      if (Array.isArray(parsed)) { tasks.value = parsed; }
-      else if (parsed.tasks) { tasks.value = parsed.tasks; }
+      if (Array.isArray(parsed)) { tasks.value = parsed as Task[]; }
+      else if (parsed.tasks) { tasks.value = parsed.tasks as Task[]; }
     } catch (e) { console.error('Failed to parse tasks', e); }
   }
 });
 
-const handleSaveTasks = (newTasks, newStateNames) => {
+const handleSaveTasks = (newTasks: Task[], newStateNames: string[]) => {
   tasks.value = newTasks;
   localStorage.setItem('ticketTasks', JSON.stringify({ tasks: newTasks, stateNames: newStateNames }));
 };
@@ -40,7 +47,7 @@ const handleSaveTasks = (newTasks, newStateNames) => {
     <div class="app-header">
       <div class="header-left">
         <img :src="hushImg" alt="logo" class="logo-img" />
-        <span class="logo-text">操作票助手 <span class="version-tag">v0.2</span></span>
+        <span class="logo-text">操作票助手 <span class="version-tag">v0.3</span></span>
       </div>
       <a-menu class="header-menu" v-model:selectedKeys="currentMenu" mode="horizontal">
         <a-menu-item key="editor">

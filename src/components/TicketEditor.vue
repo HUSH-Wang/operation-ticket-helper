@@ -1,7 +1,6 @@
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue';
 import {
-  FontSizeOutlined,
   UndoOutlined,
   RedoOutlined,
   DeleteOutlined,
@@ -9,21 +8,27 @@ import {
 } from '@ant-design/icons-vue';
 import { message, Modal } from 'ant-design-vue';
 import defaultData from '../templates/ticket_template.json';
-import { buildParseRegex, renderTemplate, clearVoltageCurrentText } from '../utils/textUtils';
+import {
+  buildParseRegex,
+  renderTemplate,
+  clearVoltageCurrentText,
+  getPrimaryTemplate,
+  getTemplateVariants,
+} from '../utils/textUtils';
 
 // ─── Props ─────────────────────────────────────────
-const props = defineProps({
-  tasks: { type: Array, required: true },
-});
+const props = defineProps<{
+  tasks: any[]
+}>();
 
 // ─── 状态数据 ──────────────────────────────────────
-const textContent = ref('');
-const fontSize = ref(14); // 默认字号 14px
-const textareaRef = ref(null);
-const highlightLayerRef = ref(null);
-const highlightedLines = ref(new Set());
+const textContent = ref<string>('');
+const fontSize = ref<number>(14); // 默认字号 14px
+const textareaRef = ref<HTMLTextAreaElement | null>(null);
+const highlightLayerRef = ref<HTMLDivElement | null>(null);
+const highlightedLines = ref<Set<number>>(new Set());
 
-const escapeHtml = (unsafe) => {
+const escapeHtml = (unsafe: string): string => {
   return (unsafe || '').replace(/[&<>"']/g, function(m) {
     switch (m) {
       case '&': return '&amp;';
@@ -61,15 +66,20 @@ const syncScroll = () => {
 };
 
 // -- 历史记录与防抖 --
-const historyStack = ref([]);
-const redoStack = ref([]);
+interface HistorySnapshot {
+  text: string;
+  start: number;
+  end: number;
+}
+const historyStack = ref<HistorySnapshot[]>([]);
+const redoStack = ref<HistorySnapshot[]>([]);
 let isUndoRedoAction = false;
 
 // -- 常量和工具 --
 const MAX_FONT_SIZE = 32;
 const MIN_FONT_SIZE = 12;
 const SAVE_INTERVAL_MS = 10000;
-let saveTimer = null;
+let saveTimer: ReturnType<typeof setInterval> | null = null;
 
 // -- 右键菜单状态 --
 const contextMenuStore = ref({
@@ -77,21 +87,21 @@ const contextMenuStore = ref({
   x: 0,
   y: 0,
 });
-const contextMenuRef = ref(null); // 指向菜单 DOM 节点
+const contextMenuRef = ref<HTMLDivElement | null>(null); // 指向菜单 DOM 节点
 
 // 从 ticket_template.json 读取作为默认 fallback，再从 localStorage 中恢复
-const stateNames = ref([...defaultData.stateNames]);
+const stateNames = ref<string[]>([...defaultData.stateNames]);
 
 // 获取所有的待匹配正则项
 const getAllPatterns = () => {
-  const patterns = [];
+  const patterns: { task: any, si: number, rx: RegExp }[] = [];
   for (const task of props.tasks) {
     for (let si = 0; si < (task.templates || []).length; si++) {
-      const tmpl = task.templates[si];
-      if (!tmpl) continue;
-      try {
-        patterns.push({ task, si, rx: buildParseRegex(tmpl) });
-      } catch { /* skip bad regex */ }
+      for (const tmpl of getTemplateVariants(task.templates[si])) {
+        try {
+          patterns.push({ task, si, rx: buildParseRegex(tmpl) });
+        } catch { /* skip bad regex */ }
+      }
     }
   }
   return patterns;
@@ -107,7 +117,7 @@ const decreaseFontSize = () => {
 };
 
 // -- 历史记录快照 --
-const saveHistorySnapshot = (content, selStart, selEnd) => {
+const saveHistorySnapshot = (content: string, selStart: number, selEnd: number) => {
   if (isUndoRedoAction) return; // 回退时不要重复压栈
   // 如果当前内容与上一次一致，则忽略
   if (historyStack.value.length > 0) {
@@ -128,6 +138,7 @@ const onTextareaInput = () => {
     return;
   }
   const el = textareaRef.value;
+  if (!el) return;
   saveHistorySnapshot(el.value, el.selectionStart, el.selectionEnd);
 };
 
@@ -135,6 +146,7 @@ const execUndo = () => {
   if (historyStack.value.length <= 1) return; // 至少留一层初始状态
   isUndoRedoAction = true;
   const current = historyStack.value.pop();
+  if (!current) return;
   redoStack.value.push(current);
   
   const prev = historyStack.value[historyStack.value.length - 1];
@@ -154,6 +166,7 @@ const execRedo = () => {
   if (redoStack.value.length === 0) return;
   isUndoRedoAction = true;
   const nextTarget = redoStack.value.pop();
+  if (!nextTarget) return;
   historyStack.value.push(nextTarget);
   
   textContent.value = nextTarget.text;
@@ -192,7 +205,7 @@ const saveToLocal = () => {
 };
 
 // ─── 核心：状态转换 ─────────────────────────────────────
-const handleConvertState = (targetIdx) => {
+const handleConvertState = (targetIdx: number) => {
   if (!textareaRef.value) return;
   const el = textareaRef.value;
   const rawText = textContent.value;
@@ -222,7 +235,7 @@ const handleConvertState = (targetIdx) => {
   
   let matchedCount = 0;
   let changedCount = 0;
-  const newHighlights = new Set();
+  const newHighlights = new Set<number>();
   
   const newLines = lines.map((line, idx) => {
     const trimmedLine = line.trim();
@@ -235,9 +248,9 @@ const handleConvertState = (targetIdx) => {
     for (const { task, rx } of allPatterns) {
       const m = strippedForMatch.match(rx);
       if (m) {
-        const captures = {};
+        const captures: Record<string, string | undefined> = {};
         if (m.groups) Object.assign(captures, m.groups);
-        const targetTmpl = (task.templates || [])[targetIdx];
+        const targetTmpl = getPrimaryTemplate((task.templates || [])[targetIdx]);
         if (targetTmpl) {
           convertedLine = renderTemplate(targetTmpl, captures);
           matched = true;
@@ -294,7 +307,7 @@ const handleConvertState = (targetIdx) => {
 };
 
 // ─── 快捷键转换机制 ─────────────────────────────────────
-const handleKeyDown = (e) => {
+const handleKeyDown = (e: KeyboardEvent) => {
   // 当发生除修饰键以外的大部分正常输入或移动时，取消高亮
   if (e.key !== 'Alt' && e.key !== 'Control' && e.key !== 'Shift' && e.key !== 'Meta') {
     clearHighlight();
@@ -341,7 +354,7 @@ const hideContextMenu = () => {
   contextMenuStore.value.visible = false;
 };
 
-const handleContextMenu = (e) => {
+const handleContextMenu = (e: MouseEvent) => {
   // 如果选中了文本，确保右键不会让光标丢失
   // 显示自定义菜单
   let startX = e.clientX;
@@ -388,7 +401,7 @@ const contextMenuRedo = () => {
   hideContextMenu();
 };
 
-const contextMenuConvert = (idx) => {
+const contextMenuConvert = (idx: number) => {
   handleConvertState(idx);
   hideContextMenu();
 };

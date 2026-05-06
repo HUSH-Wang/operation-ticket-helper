@@ -1,24 +1,24 @@
-<script setup>
+<script setup lang="ts">
 import { ref, reactive, watch, onMounted } from 'vue';
-import { SettingOutlined, CopyOutlined } from '@ant-design/icons-vue';
+import { SettingOutlined, CopyOutlined, ReloadOutlined } from '@ant-design/icons-vue';
 import { message, Modal } from 'ant-design-vue';
 import defaultData from '../templates/ticket_template.json';
 
-const defaultTemplates = defaultData.platTemplates;
+const defaultTemplates = defaultData.platTemplates as Record<string, string>;
 
 // ─── State ───────────────────────────────────────────────
-const inputMode = ref('basic');
-const operationType = ref('input');
-const screenName = ref('');
-const platText = ref('');
-const parseText = ref('');
-const outputLines = ref([]);        // [{text: string, matched: boolean}]
-const hasPromptedParseError = ref(false);
-const errorLineMsg = ref('');
+const inputMode = ref<'basic' | 'parse'>('basic');
+const operationType = ref<string>('input');
+const screenName = ref<string>('');
+const platText = ref<string>('');
+const parseText = ref<string>('');
+const outputLines = ref<any[]>([]);        // [{text: string, matched: boolean}]
+const hasPromptedParseError = ref<boolean>(false);
+const errorLineMsg = ref<string>('');
 
-const templates = reactive({ ...defaultTemplates });
-const isSettingsVisible = ref(false);
-const editingTemplates = reactive({ ...defaultTemplates });
+const templates = reactive<Record<string, string>>({ ...defaultTemplates });
+const isSettingsVisible = ref<boolean>(false);
+const editingTemplates = reactive<Record<string, string>>({ ...defaultTemplates });
 
 onMounted(() => {
   const saved = localStorage.getItem('ticketPlatTemplates');
@@ -34,13 +34,13 @@ onMounted(() => {
 });
 
 // ─── Logic ───────────────────────────────────────────────
-const escapeRegex = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const escapeRegex = (string: string): string => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // ─── 行级缓存 ────────────────────────────────────────────
 // 缓存 key 由"操作类型 + 屏名 + 4条模板"拼接，任意配置变化时自动失效
-const basicLineCache = new Map();   // platLine    -> { text, matched }
-const parseLineCache = new Map();   // strippedLine -> { text, matched }
-let lastConfigKey = null;
+const basicLineCache = new Map<string, any>();   // platLine    -> { text, matched }
+const parseLineCache = new Map<string, any>();   // strippedLine -> { text, matched }
+let lastConfigKey: string | null = null;
 const getConfigKey = () =>
   [operationType.value, screenName.value,
    templates.input, templates.exit, templates.checkInput, templates.checkExit].join('\x01');
@@ -101,7 +101,7 @@ const generateText = () => {
     }
 
     // 正则懒初始化：只在有缓存未命中时才真正构建
-    let regexes = null;
+    let regexes: RegExp[] | null = null;
     const getRegexes = () => {
       if (!regexes) {
         regexes = Object.values(templates).map(t => {
@@ -155,9 +155,9 @@ const generateText = () => {
   outputLines.value = resultLines;
 };
 
-let debounceTimer = null;
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 watch([operationType, screenName, platText, parseText, templates, inputMode], () => {
-  clearTimeout(debounceTimer);
+  if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(generateText, 300);
 }, { deep: true });
 
@@ -193,6 +193,19 @@ const saveSettings = () => {
   generateText();
 };
 
+const resetSettingsToDefault = () => {
+  Modal.confirm({
+    title: '重置压板规则',
+    content: '确定要将压板文本模板恢复为内置默认值吗？重置后需点击保存才会生效。',
+    okText: '重置',
+    cancelText: '取消',
+    onOk() {
+      Object.assign(editingTemplates, defaultTemplates);
+      message.success('已恢复默认规则，请点击保存生效');
+    },
+  });
+};
+
 const exportData = () => {
   const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(editingTemplates, null, 2));
   const a = document.createElement('a');
@@ -207,13 +220,15 @@ const triggerImport = () => {
   const fileInput = document.createElement('input');
   fileInput.type = 'file';
   fileInput.accept = '.json';
-  fileInput.onchange = e => {
-    const file = e.target.files[0];
+  fileInput.onchange = (e: Event) => {
+    const target = e.target as HTMLInputElement;
+    const file = target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = () => {
       try {
-        const parsed = JSON.parse(event.target.result);
+        const result = reader.result as string;
+        const parsed = JSON.parse(result);
         if (parsed && typeof parsed === 'object') {
           if (parsed.input !== undefined) editingTemplates.input = parsed.input;
           if (parsed.exit !== undefined) editingTemplates.exit = parsed.exit;
@@ -323,12 +338,16 @@ const triggerImport = () => {
       <template #footer>
         <div class="modal-footer-actions">
           <div>
+            <a-button @click="resetSettingsToDefault">
+              <template #icon><ReloadOutlined /></template>
+              重置规则
+            </a-button>
             <a-button @click="exportData">导出 JSON</a-button>
-            <a-button @click="triggerImport" style="margin-left: 8px">导入 JSON</a-button>
+            <a-button @click="triggerImport">导入 JSON</a-button>
           </div>
           <div>
             <a-button @click="isSettingsVisible = false">取消</a-button>
-            <a-button type="primary" @click="saveSettings" style="margin-left: 8px">保存</a-button>
+            <a-button type="primary" @click="saveSettings">保存</a-button>
           </div>
         </div>
       </template>
@@ -441,6 +460,11 @@ const triggerImport = () => {
   justify-content: space-between;
   align-items: center;
   width: 100%;
+}
+.modal-footer-actions > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .error-msg {
