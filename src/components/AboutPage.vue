@@ -44,6 +44,7 @@ import hushImg from '../assets/hushDataUrl';
           <li><strong>辅助数据过滤</strong>：新增“清空电压电流”快捷功能，在转换前就可快速将复杂测量数据过滤为标准空格填充位。</li>
           <li><strong>全自动转换</strong>：选中目标后系统一次性将识别出的所有语句统一整理输出，无法匹配的部分将以浅黄色高亮提示。</li>
           <li><strong>定制灵活</strong>：允许深度的自定义模板配置（点击右上角设置图标），支持导出 JSON 配置文件分享给同事跨设备使用。</li>
+          <li><strong>符号兼容可配</strong>：步骤转换设置中可单独维护“规范输出”和“兼容识别符号”，用于统一处理中英文引号、括号、逗号等写法，输出始终以模板中的规范符号为准。</li>
         </ul>
       </div>
 
@@ -61,7 +62,19 @@ import hushImg from '../assets/hushDataUrl';
       <a-timeline>
         <a-timeline-item color="green">
           <p class="log-version">
-            <span>v0.3 (当前版本)</span>
+            <span>v0.4 (当前版本)</span>
+            <span class="log-date">2026.05.07</span>
+          </p>
+          <ul class="log-list">
+            <li>新增全局符号兼容规则：步骤转换、编辑器原位转换、压板解析三处统一支持按规则识别中英文引号、括号、逗号等符号。</li>
+            <li>符号输出规范化：输入英文直引号或英文括号时，匹配成功后会自动按照主模板中的中文符号输出；模板中的 <code>/</code> 保持原样不参与转换。</li>
+            <li>设置页增强：任务模板配置新增符号规则维护、导入导出与一键重置，并优化了模板与符号输入框的字体和紧凑布局，便于区分左右引号等细微符号。</li>
+            <li>输入体验修复：解决设置页中输入中文引号、句号等符号时“光标移动但字符未录入”的问题，改为保存时再统一解析配置。</li>
+          </ul>
+        </a-timeline-item>
+        <a-timeline-item color="green">
+          <p class="log-version">
+            <span>v0.3</span>
             <span class="log-date">2026.05.06</span>
           </p>
           <ul class="log-list">

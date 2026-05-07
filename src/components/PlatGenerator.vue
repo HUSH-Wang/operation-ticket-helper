@@ -3,8 +3,17 @@ import { ref, reactive, watch, onMounted } from 'vue';
 import { SettingOutlined, CopyOutlined, ReloadOutlined } from '@ant-design/icons-vue';
 import { message, Modal } from 'ant-design-vue';
 import defaultData from '../templates/ticket_template.json';
+import {
+  buildParseRegex,
+  renderTemplate,
+  stripTextForMatch,
+  type SymbolRule,
+} from '../utils/textUtils.ts';
 
 const defaultTemplates = defaultData.platTemplates as Record<string, string>;
+const props = defineProps<{
+  symbolRules: SymbolRule[]
+}>();
 
 // ─── State ───────────────────────────────────────────────
 const inputMode = ref<'basic' | 'parse'>('basic');
@@ -33,9 +42,6 @@ onMounted(() => {
   }
 });
 
-// ─── Logic ───────────────────────────────────────────────
-const escapeRegex = (string: string): string => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
 // ─── 行级缓存 ────────────────────────────────────────────
 // 缓存 key 由"操作类型 + 屏名 + 4条模板"拼接，任意配置变化时自动失效
 const basicLineCache = new Map<string, any>();   // platLine    -> { text, matched }
@@ -43,7 +49,7 @@ const parseLineCache = new Map<string, any>();   // strippedLine -> { text, matc
 let lastConfigKey: string | null = null;
 const getConfigKey = () =>
   [operationType.value, screenName.value,
-   templates.input, templates.exit, templates.checkInput, templates.checkExit].join('\x01');
+   templates.input, templates.exit, templates.checkInput, templates.checkExit, JSON.stringify(props.symbolRules)].join('\x01');
 
 const removeInlineSpaces = () => {
   if (platText.value) {
@@ -64,7 +70,6 @@ const generateText = () => {
   }
 
   const currentTemplate = templates[operationType.value];
-  const screen = screenName.value.replace(/[\s\t\u00A0\u200B]+/g, '');
   const screenForReplace = screenName.value.trim();
 
   // resultLines: [{text, matched}]
@@ -79,10 +84,10 @@ const generateText = () => {
         // 此行内容未变化，直接复用缓存结果
         resultLines.push(basicLineCache.get(line));
       } else {
-        const text = currentTemplate
-          .replace(/{screen}/g, screenForReplace)
-          .replace(/{plat}/g, line)
-          .replace(/{n}/g, '');
+        const text = renderTemplate(currentTemplate, {
+          screen: screenForReplace,
+          plat: line,
+        });
         const entry = { text, matched: true };
         basicLineCache.set(line, entry);
         resultLines.push(entry);
@@ -90,7 +95,7 @@ const generateText = () => {
     }
   } else {
     const rawLines = parseText.value.split('\n')
-      .map(line => line.replace(/[\s\t\u00A0\u200B]+/g, ''))
+      .map(line => stripTextForMatch(line))
       .filter(line => line.length > 0);
 
     if (rawLines.length === 0) {
@@ -104,14 +109,7 @@ const generateText = () => {
     let regexes: RegExp[] | null = null;
     const getRegexes = () => {
       if (!regexes) {
-        regexes = Object.values(templates).map(t => {
-          let r = t.replace(/\{n\}/g, '\x00NUM\x00').replace(/[\s\t\u00A0\u200B]+/g, '');
-          r = escapeRegex(r);
-          r = r.replace(/\\\{screen\\\}/g, escapeRegex(screen));
-          r = r.replace(/\\\{plat\\\}/g, '(.+)');
-          r = r.replace(/\x00NUM\x00/g, '\\d*');
-          return new RegExp('^' + r + '$');
-        });
+        regexes = Object.values(templates).map(t => buildParseRegex(t, props.symbolRules));
       }
       return regexes;
     };
@@ -127,14 +125,14 @@ const generateText = () => {
         let platName = null;
         for (const rx of getRegexes()) {
           const m = line.match(rx);
-          if (m && m[1]) { platName = m[1]; break; }
+          if (m?.groups?.plat) { platName = m.groups.plat; break; }
         }
         let entry;
         if (platName) {
-          const text = currentTemplate
-            .replace(/{screen}/g, screenForReplace)
-            .replace(/{plat}/g, platName)
-            .replace(/{n}/g, '');
+          const text = renderTemplate(currentTemplate, {
+            screen: screenForReplace,
+            plat: platName,
+          });
           entry = { text, matched: true };
         } else {
           // 未匹配：原样保留，标黄显示
@@ -156,7 +154,7 @@ const generateText = () => {
 };
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-watch([operationType, screenName, platText, parseText, templates, inputMode], () => {
+watch([operationType, screenName, platText, parseText, templates, inputMode, () => props.symbolRules], () => {
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(generateText, 300);
 }, { deep: true });

@@ -11,6 +11,53 @@
         "检查 合上/投入",
         "检查 拉开/退出"
     ],
+    "symbolRules": [
+        {
+            "id": "left-double-quote",
+            "label": "中文左双引号",
+            "canonical": "“",
+            "variants": [
+                "\"",
+                "“"
+            ]
+        },
+        {
+            "id": "right-double-quote",
+            "label": "中文右双引号",
+            "canonical": "”",
+            "variants": [
+                "\"",
+                "”"
+            ]
+        },
+        {
+            "id": "left-parenthesis",
+            "label": "中文左括号",
+            "canonical": "（",
+            "variants": [
+                "(",
+                "（"
+            ]
+        },
+        {
+            "id": "right-parenthesis",
+            "label": "中文右括号",
+            "canonical": "）",
+            "variants": [
+                ")",
+                "）"
+            ]
+        },
+        {
+            "id": "comma",
+            "label": "中文逗号",
+            "canonical": "，",
+            "variants": [
+                ",",
+                "，"
+            ]
+        }
+    ],
     "tasks": [
         {
             "id": "breaker",
@@ -47,18 +94,18 @@
             "name": "远方/就地",
             "templates": [
                 [
-                    "将{deviceName}\"远方/就地\"切换开关由\"远方\"位置切至\"就地\"位置"
+                    "将{deviceName}“远方/就地”切换开关由“远方”位置切至“就地”位置"
                 ],
                 [
-                    "将{deviceName}\"远方/就地\"切换开关由\"就地\"位置切至\"远方\"位置"
+                    "将{deviceName}“远方/就地”切换开关由“就地”位置切至“远方”位置"
                 ],
                 [
-                    "检查{deviceName}\"远方/就地\"切换开关确在\"就地\"位置",
-                    "检查{deviceName}\"远方/就地\"切换开关确已切至\"就地\"位置"
+                    "检查{deviceName}“远方/就地”切换开关确在“就地”位置",
+                    "检查{deviceName}“远方/就地”切换开关确已切至“就地”位置"
                 ],
                 [
-                    "检查{deviceName}\"远方/就地\"切换开关确在\"远方\"位置",
-                    "检查{deviceName}\"远方/就地\"切换开关确已切至\"远方\"位置"
+                    "检查{deviceName}“远方/就地”切换开关确在“远方”位置",
+                    "检查{deviceName}“远方/就地”切换开关确已切至“远方”位置"
                 ]
             ]
         },

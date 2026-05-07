@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import defaultData from './templates/ticket_template.json';
 import PlatGenerator from './components/PlatGenerator.vue';
 import TaskConverter from './components/TaskConverter.vue';
 import TicketEditor from './components/TicketEditor.vue';
@@ -12,33 +11,36 @@ import {
   InfoCircleOutlined
 } from '@ant-design/icons-vue';
 import hushImg from './assets/hushDataUrl';
-import type { TemplateEntry } from './utils/textUtils';
+import type { SymbolRule } from './utils/textUtils.ts';
+import {
+  getDefaultTaskSettings,
+  loadTaskSettings,
+  saveTaskSettings,
+  type Task,
+} from './utils/taskSettings.ts';
 
-export interface Task {
-  id: string;
-  name: string;
-  templates: TemplateEntry[];
-}
-
-const defaultTasks = defaultData.tasks as Task[];
-const tasks = ref<Task[]>([...defaultTasks]);
+const defaultSettings = getDefaultTaskSettings();
+const tasks = ref<Task[]>(defaultSettings.tasks);
+const stateNames = ref<string[]>(defaultSettings.stateNames);
+const symbolRules = ref<SymbolRule[]>(defaultSettings.symbolRules);
 const currentMenu = ref<string[]>(['editor']);
 
 onMounted(() => {
-  const saved = localStorage.getItem('ticketTasks');
-  if (saved) {
-    try {
-      const parsed = JSON.parse(saved);
-      // 新格式: { tasks: [], stateNames: [] }；兼容旧格式（数组）
-      if (Array.isArray(parsed)) { tasks.value = parsed as Task[]; }
-      else if (parsed.tasks) { tasks.value = parsed.tasks as Task[]; }
-    } catch (e) { console.error('Failed to parse tasks', e); }
-  }
+  const saved = loadTaskSettings();
+  tasks.value = saved.tasks;
+  stateNames.value = saved.stateNames;
+  symbolRules.value = saved.symbolRules;
 });
 
-const handleSaveTasks = (newTasks: Task[], newStateNames: string[]) => {
+const handleSaveTaskSettings = (newTasks: Task[], newStateNames: string[], newSymbolRules: SymbolRule[]) => {
   tasks.value = newTasks;
-  localStorage.setItem('ticketTasks', JSON.stringify({ tasks: newTasks, stateNames: newStateNames }));
+  stateNames.value = newStateNames;
+  symbolRules.value = newSymbolRules;
+  saveTaskSettings({
+    tasks: newTasks,
+    stateNames: newStateNames,
+    symbolRules: newSymbolRules,
+  });
 };
 </script>
 
@@ -47,7 +49,7 @@ const handleSaveTasks = (newTasks: Task[], newStateNames: string[]) => {
     <div class="app-header">
       <div class="header-left">
         <img :src="hushImg" alt="logo" class="logo-img" />
-        <span class="logo-text">操作票助手 <span class="version-tag">v0.3</span></span>
+        <span class="logo-text">操作票助手 <span class="version-tag">v0.4</span></span>
       </div>
       <a-menu class="header-menu" v-model:selectedKeys="currentMenu" mode="horizontal">
         <a-menu-item key="editor">
@@ -72,13 +74,18 @@ const handleSaveTasks = (newTasks: Task[], newStateNames: string[]) => {
     <!-- 主体内容 -->
     <div class="main-content">
       <div v-show="currentMenu[0] === 'editor'">
-        <TicketEditor :tasks="tasks" />
+        <TicketEditor :tasks="tasks" :state-names="stateNames" :symbol-rules="symbolRules" />
       </div>
       <div v-show="currentMenu[0] === 'task'">
-        <TaskConverter :tasks="tasks" :on-save-tasks="handleSaveTasks" />
+        <TaskConverter
+          :tasks="tasks"
+          :state-names="stateNames"
+          :symbol-rules="symbolRules"
+          :on-save-task-settings="handleSaveTaskSettings"
+        />
       </div>
       <div v-show="currentMenu[0] === 'plat'">
-        <PlatGenerator />
+        <PlatGenerator :symbol-rules="symbolRules" />
       </div>
       <div v-show="currentMenu[0] === 'about'">
         <AboutPage />

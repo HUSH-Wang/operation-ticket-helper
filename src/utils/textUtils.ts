@@ -7,6 +7,60 @@ const escapeRegex = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$
 const PLACEHOLDER_RE = /\{([a-z][a-zA-Z0-9]*)\}/g;
 
 export type TemplateEntry = string | string[];
+export interface SymbolRule {
+    id: string;
+    label: string;
+    canonical: string;
+    variants: string[];
+}
+
+const MATCH_WHITESPACE_RE = /[\s\t\u00A0\u200B]+/g;
+const NUM_TOKEN = '\x00NUM\x00';
+const PLACEHOLDER_TOKEN_RE = /^\x00PH_([a-zA-Z0-9]+)\x00/;
+
+const getRuleAlternatives = (rule: SymbolRule): string[] => {
+    return Array.from(new Set([
+        rule.canonical,
+        ...rule.variants,
+    ].filter(value => typeof value === 'string' && value.length > 0)));
+};
+
+const buildRulePattern = (rule: SymbolRule): string => {
+    const variants = getRuleAlternatives(rule)
+        .sort((a, b) => b.length - a.length)
+        .map(escapeRegex);
+    return variants.length === 1 ? variants[0] : `(?:${variants.join('|')})`;
+};
+
+const buildLiteralPattern = (literal: string, symbolRules: SymbolRule[]): string => {
+    if (!literal) return '';
+
+    const sortedRules = symbolRules
+        .filter(rule => typeof rule.canonical === 'string' && rule.canonical.length > 0)
+        .slice()
+        .sort((a, b) => b.canonical.length - a.canonical.length);
+
+    let result = '';
+    let index = 0;
+
+    while (index < literal.length) {
+        const matchedRule = sortedRules.find(rule => literal.startsWith(rule.canonical, index));
+        if (matchedRule) {
+            result += buildRulePattern(matchedRule);
+            index += matchedRule.canonical.length;
+            continue;
+        }
+
+        result += escapeRegex(literal[index]);
+        index += 1;
+    }
+
+    return result;
+};
+
+export const stripTextForMatch = (text: string): string => {
+    return (text || '').replace(MATCH_WHITESPACE_RE, '');
+};
 
 /**
  * 获取用于输出渲染的主模板：字符串直接使用，数组使用第一项。
@@ -36,24 +90,44 @@ export const getTemplateVariants = (templateEntry: TemplateEntry | undefined): s
  * @param {string} template 模板字符串
  * @returns {RegExp} 构建的正则表达式
  */
-export const buildParseRegex = (template: string): RegExp => {
-    // Step1: 保护 {n} 和各占位符, 去除空白
-    let r = template
-        .replace(/\{n\}/g, '\x00NUM\x00')
+export const buildParseRegex = (template: string, symbolRules: SymbolRule[] = []): RegExp => {
+    const sanitizedTemplate = template
+        .replace(/\{n\}/g, NUM_TOKEN)
         .replace(PLACEHOLDER_RE, (_, name) => `\x00PH_${name}\x00`)
-        .replace(/[\s\t\u00A0\u200B]+/g, '');
-    // Step2: 转义其予内容
-    r = escapeRegex(r);
+        .replace(MATCH_WHITESPACE_RE, '');
 
-    // 兼容中英文符号差异
-    r = r.replace(/\\\(|\\\)|[（），、:：]/g, '[()（），、:：]*');
-    // 兼容单位 A 和 小数
-    r = r.replace(/\x00NUM\x00A?/g, '[\\d.]*A?');
+    let pattern = '';
+    let index = 0;
 
-    // Step3: 还原占位符为命名捕获组 / 数字通配
-    r = r.replace(/\x00NUM\x00/g, '[\\d.]*');
-    r = r.replace(/\x00PH_([a-zA-Z0-9]+)\x00/g, (_, name) => `(?<${name}>.+?)`);
-    return new RegExp('^' + r + '$');
+    while (index < sanitizedTemplate.length) {
+        if (sanitizedTemplate.startsWith(NUM_TOKEN, index)) {
+            const nextChar = sanitizedTemplate[index + NUM_TOKEN.length];
+            if (nextChar === 'A') {
+                pattern += '[\\d.]*A?';
+                index += NUM_TOKEN.length + 1;
+            } else {
+                pattern += '[\\d.]*';
+                index += NUM_TOKEN.length;
+            }
+            continue;
+        }
+
+        const placeholderMatch = sanitizedTemplate.slice(index).match(PLACEHOLDER_TOKEN_RE);
+        if (placeholderMatch) {
+            pattern += `(?<${placeholderMatch[1]}>.+?)`;
+            index += placeholderMatch[0].length;
+            continue;
+        }
+
+        const nextTokenIndex = sanitizedTemplate.slice(index).search(/\x00(?:NUM|PH_[a-zA-Z0-9]+)\x00/);
+        const literalEnd = nextTokenIndex === -1
+            ? sanitizedTemplate.length
+            : index + nextTokenIndex;
+        pattern += buildLiteralPattern(sanitizedTemplate.slice(index, literalEnd), symbolRules);
+        index = literalEnd;
+    }
+
+    return new RegExp('^' + pattern + '$');
 };
 
 /**

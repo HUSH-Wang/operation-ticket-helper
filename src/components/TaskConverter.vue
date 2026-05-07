@@ -1,35 +1,27 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue';
+import { ref, watch } from 'vue';
 import { SettingOutlined, CopyOutlined, PlusOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons-vue';
 import { message, Modal } from 'ant-design-vue';
-import defaultData from '../templates/ticket_template.json';
 import {
   buildParseRegex,
   renderTemplate,
   clearVoltageCurrentText,
   getPrimaryTemplate,
   getTemplateVariants,
-} from '../utils/textUtils';
-
-import type { Task } from '../App.vue';
+  stripTextForMatch,
+  type SymbolRule,
+} from '../utils/textUtils.ts';
+import { getDefaultTaskSettings, normalizeSymbolRules, type Task } from '../utils/taskSettings.ts';
 
 const props = defineProps<{
   tasks: Task[],
-  onSaveTasks: (t: Task[], s: string[]) => void
+  stateNames: string[],
+  symbolRules: SymbolRule[],
+  onSaveTaskSettings: (t: Task[], s: string[], r: SymbolRule[]) => void
 }>();
 
 // ─── 全局状态名称 ─────────────────────────────────────────
-const stateNames = ref<string[]>([...defaultData.stateNames]);
-
-onMounted(() => {
-  const saved = localStorage.getItem('ticketTasks');
-  if (saved) {
-    try {
-      const parsed = JSON.parse(saved);
-      if (parsed.stateNames) stateNames.value = parsed.stateNames;
-    } catch (e) { /* ignore */ }
-  }
-});
+const stateNames = ref<string[]>([...props.stateNames]);
 
 // ─── UI State ────────────────────────────────────────────
 const toStateIdx = ref<number>(0);          // 目标状态索引
@@ -41,7 +33,18 @@ const isSettingsVisible = ref<boolean>(false);
 
 // 编辑用
 const editingStateNames = ref<string[]>([]);
-const editingTasks = ref<Task[]>([]);
+interface EditingTask {
+  id: string;
+  name: string;
+  templates: string[];
+}
+
+interface EditingSymbolRule extends SymbolRule {
+  variantsText: string;
+}
+
+const editingTasks = ref<EditingTask[]>([]);
+const editingSymbolRules = ref<EditingSymbolRule[]>([]);
 const activeTaskKeys = ref<string[]>([]);
 
 // ─── 行级缓存 ────────────────────────────────────────────
@@ -49,7 +52,7 @@ const activeTaskKeys = ref<string[]>([]);
 // 当目标状态或任务模板变化时清空缓存
 const lineResultCache = new Map<string, any>();
 let lastConfigKey: string | null = null;
-const getConfigKey = () => toStateIdx.value + '\x01' + JSON.stringify(props.tasks);
+const getConfigKey = () => `${toStateIdx.value}\x01${JSON.stringify(props.tasks)}\x01${JSON.stringify(props.symbolRules)}`;
 
 // ─── 清空电压电流 ────────────────────────────────────────
 const clearVoltageCurrent = () => {
@@ -92,7 +95,7 @@ const convert = () => {
         for (let si = 0; si < (task.templates || []).length; si++) {
           for (const tmpl of getTemplateVariants(task.templates[si])) {
             try {
-              allPatterns.push({ task, si, rx: buildParseRegex(tmpl) });
+              allPatterns.push({ task, si, rx: buildParseRegex(tmpl, props.symbolRules) });
             } catch { /* skip bad regex */ }
           }
         }
@@ -102,7 +105,7 @@ const convert = () => {
   };
 
   for (const line of lines) {
-    const stripped = line.replace(/[\s\t\u00A0\u200B]+/g, '');
+    const stripped = stripTextForMatch(line);
 
     if (lineResultCache.has(stripped)) {
       // 此行内容未变化，直接复用缓存结果（跳过所有正则匹配）
@@ -154,7 +157,11 @@ const convert = () => {
 };
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-watch([() => props.tasks, toStateIdx, inputText], () => {
+watch([() => props.tasks, () => props.symbolRules, () => props.stateNames], () => {
+  stateNames.value = [...props.stateNames];
+}, { deep: true });
+
+watch([() => props.tasks, () => props.symbolRules, toStateIdx, inputText], () => {
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(convert, 300);
 }, { deep: true });
@@ -179,8 +186,9 @@ const copyOutput = async () => {
 
 // ─── 设置弹窗 ────────────────────────────────────────────
 const openSettings = () => {
-  editingStateNames.value = [...stateNames.value];
-  editingTasks.value = JSON.parse(JSON.stringify(props.tasks));
+  editingStateNames.value = [...props.stateNames];
+  editingTasks.value = props.tasks.map(taskToEditingTask);
+  editingSymbolRules.value = props.symbolRules.map(symbolRuleToEditingRule);
   isSettingsVisible.value = true;
 };
 
@@ -197,28 +205,53 @@ const templateEntryToText = (entry: Task['templates'][number] | undefined): stri
   return entry ?? '';
 };
 
-const textToTemplateEntry = (
-  text: string,
-  currentEntry: Task['templates'][number] | undefined,
-): Task['templates'][number] => {
+const textToTemplateEntry = (text: string): Task['templates'][number] => {
   const lines = text
     .split('\n')
     .map(line => line.trim())
     .filter(line => line.length > 0);
 
-  if (Array.isArray(currentEntry) || lines.length > 1) {
+  if (lines.length > 1) {
     return lines;
   }
   return lines[0] ?? '';
 };
 
-const updateEditingTemplate = (task: Task, stateIdx: number, value: string) => {
-  task.templates[stateIdx] = textToTemplateEntry(value, task.templates[stateIdx]);
+const taskToEditingTask = (task: Task): EditingTask => ({
+  id: task.id,
+  name: task.name,
+  templates: task.templates.map(templateEntryToText),
+});
+
+const createSymbolRule = (): EditingSymbolRule => ({
+  id: `symbol_rule_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+  label: '新符号规则',
+  canonical: '',
+  variants: [],
+  variantsText: '',
+});
+
+const addSymbolRule = () => {
+  editingSymbolRules.value.push(createSymbolRule());
 };
 
-const createEditingTemplateUpdater = (task: Task, stateIdx: number) => {
-  return (value: string) => updateEditingTemplate(task, stateIdx, value);
+const removeSymbolRule = (idx: number) => {
+  editingSymbolRules.value.splice(idx, 1);
 };
+
+const symbolRuleVariantsToText = (variants: string[]): string => variants.join(' | ');
+
+const parseSymbolRuleVariants = (value: string): string[] => {
+  return value
+    .split(/[\n\r|]+/g)
+    .map(item => item.trim())
+    .filter(item => item.length > 0);
+};
+
+const symbolRuleToEditingRule = (rule: SymbolRule): EditingSymbolRule => ({
+  ...rule,
+  variantsText: symbolRuleVariantsToText(rule.variants),
+});
 
 const removeTask = (idx: number) => {
   Modal.confirm({
@@ -230,28 +263,39 @@ const removeTask = (idx: number) => {
 };
 
 const saveSettings = () => {
+  const normalizedSymbolRules = normalizeSymbolRules(
+    editingSymbolRules.value.map(rule => ({
+      id: rule.id,
+      label: rule.label,
+      canonical: rule.canonical,
+      variants: parseSymbolRuleVariants(rule.variantsText),
+    })),
+    [],
+  );
   // 确保每个任务的 templates 数组长度与 stateNames 对齐
   const ns = editingStateNames.value.length;
   const newTasks = editingTasks.value.map(t => ({
     ...t,
-    templates: Array.from({ length: ns }, (_, i) => t.templates?.[i] ?? ''),
+    templates: Array.from({ length: ns }, (_, i) => textToTemplateEntry(t.templates?.[i] ?? '')),
   }));
 
   stateNames.value = [...editingStateNames.value];
-  props.onSaveTasks(newTasks, editingStateNames.value);
+  props.onSaveTaskSettings(newTasks, editingStateNames.value, normalizedSymbolRules);
   isSettingsVisible.value = false;
   message.success('任务模板保存成功');
 };
 
 const resetSettingsToDefault = () => {
+  const defaults = getDefaultTaskSettings();
   Modal.confirm({
     title: '重置步骤转换规则',
-    content: '确定要将步骤转换的状态名称和任务模板恢复为内置默认值吗？重置后需点击保存才会生效。',
+    content: '确定要将步骤转换的状态名称、任务模板和全局符号兼容规则恢复为内置默认值吗？重置后需点击保存才会生效。',
     okText: '重置',
     cancelText: '取消',
     onOk() {
-      editingStateNames.value = [...defaultData.stateNames];
-      editingTasks.value = JSON.parse(JSON.stringify(defaultData.tasks)) as Task[];
+      editingStateNames.value = [...defaults.stateNames];
+      editingTasks.value = defaults.tasks.map(taskToEditingTask);
+      editingSymbolRules.value = defaults.symbolRules.map(symbolRuleToEditingRule);
       message.success('已恢复默认规则，请点击保存生效');
     },
   });
@@ -259,7 +303,22 @@ const resetSettingsToDefault = () => {
 
 // ─── JSON 导出/导入 ──────────────────────────────────────
 const exportTasks = () => {
-  const data = { stateNames: editingStateNames.value, tasks: editingTasks.value };
+  const data = {
+    stateNames: editingStateNames.value,
+    tasks: editingTasks.value.map(task => ({
+      ...task,
+      templates: task.templates.map(textToTemplateEntry),
+    })),
+    symbolRules: normalizeSymbolRules(
+      editingSymbolRules.value.map(rule => ({
+        id: rule.id,
+        label: rule.label,
+        canonical: rule.canonical,
+        variants: parseSymbolRuleVariants(rule.variantsText),
+      })),
+      [],
+    ),
+  };
   const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(data, null, 2));
   const a = document.createElement('a');
   a.setAttribute('href', dataStr);
@@ -279,7 +338,10 @@ const triggerImport = () => {
         const result = reader.result as string;
         const parsed = JSON.parse(result);
         if (parsed.stateNames) editingStateNames.value = parsed.stateNames;
-        if (Array.isArray(parsed.tasks)) editingTasks.value = parsed.tasks;
+        if (Array.isArray(parsed.tasks)) editingTasks.value = parsed.tasks.map(taskToEditingTask);
+        if (Array.isArray(parsed.symbolRules)) {
+          editingSymbolRules.value = normalizeSymbolRules(parsed.symbolRules, []).map(symbolRuleToEditingRule);
+        }
         message.success('导入成功，请点击保存生效配置');
       } catch { message.error('解析 JSON 失败'); }
     };
@@ -367,7 +429,7 @@ const triggerImport = () => {
     <a-modal
       v-model:open="isSettingsVisible"
       title="任务模板配置"
-      width="720px"
+      width="880px"
       centered
       :footer="null"
     >
@@ -375,24 +437,70 @@ const triggerImport = () => {
       <div class="settings-hint">
         <p>
           占位符：<code>{deviceName}</code> 设备名称 &nbsp;|&nbsp;
-          <code>{n}</code> 数值通配符（解析时匹配任意数字及空格，生成时为4个空格）
+          <code>{n}</code> 数值通配符（解析时匹配任意数字及空格，生成时为4个空格）<br />
+          全局符号兼容规则只影响识别，不会改写模板正文；最终输出始终以主模板中的符号为准。
         </p>
       </div>
 
-      <a-form layout="vertical" style="margin-bottom: 16px;">
-        <a-form-item label="全局状态名称（所有任务共用）">
-          <a-space wrap>
+      <div class="settings-section">
+        <div class="settings-section-title">全局状态名称</div>
+        <div class="state-name-grid">
+          <div v-for="(_, idx) in editingStateNames" :key="idx" class="state-name-item">
+            <div class="compact-field-label">状态 {{ idx + 1 }}</div>
             <a-input
-              v-for="(_, idx) in editingStateNames"
-              :key="idx"
               v-model:value="editingStateNames[idx]"
               :placeholder="`状态 ${idx + 1}`"
-              style="width: 120px;"
-              :addonBefore="idx + 1"
+              size="small"
             />
-          </a-space>
-        </a-form-item>
-      </a-form>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+      <div class="symbol-rules-header">
+        <div>
+          <div class="symbol-rules-title">全局符号兼容规则</div>
+          <div class="symbol-rules-subtitle">用于统一识别英文/中文等价符号，输出仍以模板中的规范符号为准。</div>
+        </div>
+        <a-button type="dashed" @click="addSymbolRule">
+          <template #icon><PlusOutlined /></template>
+          添加符号规则
+        </a-button>
+      </div>
+
+      <div class="symbol-rule-list" v-if="editingSymbolRules.length > 0">
+        <div class="symbol-rule-columns">
+          <span></span>
+          <span>规则名</span>
+          <span>规范输出</span>
+          <span>兼容识别符号</span>
+          <span></span>
+        </div>
+        <div v-for="(rule, idx) in editingSymbolRules" :key="rule.id" class="symbol-rule-card">
+          <div class="symbol-rule-index">#{{ idx + 1 }}</div>
+          <div class="symbol-rule-fields">
+            <div class="compact-field">
+              <div class="compact-field-label mobile-only">规则名</div>
+              <a-input v-model:value="rule.label" placeholder="例如：中文左引号" size="small" />
+            </div>
+            <div class="compact-field compact-field-canonical">
+              <div class="compact-field-label mobile-only">规范输出</div>
+              <a-input v-model:value="rule.canonical" placeholder="例如：“" maxlength="8" size="small" />
+            </div>
+            <div class="compact-field compact-field-variants">
+              <div class="compact-field-label mobile-only">兼容识别符号</div>
+              <a-input v-model:value="rule.variantsText" placeholder='例如：" | “ | ”' size="small" />
+            </div>
+          </div>
+          <div class="symbol-rule-actions">
+            <a-button type="text" danger size="small" @click="removeSymbolRule(idx)">
+              <template #icon><DeleteOutlined /></template>
+            </a-button>
+          </div>
+        </div>
+      </div>
+      <div v-else class="symbol-rule-empty">当前没有符号兼容规则，解析时将只按模板中的原始符号严格匹配。</div>
+      </div>
 
       <!-- 任务列表 -->
       <a-collapse v-model:activeKey="activeTaskKeys" accordion>
@@ -412,8 +520,8 @@ const triggerImport = () => {
               :label="`${stateName} 的模板`"
             >
               <a-textarea
-                :value="templateEntryToText(task.templates[si])"
-                @update:value="createEditingTemplateUpdater(task, si)"
+                v-model:value="task.templates[si]"
+                class="template-textarea"
                 :rows="2"
                 :placeholder="`例：检查{deviceName}已{n}切换至${stateName}`"
               />
@@ -545,6 +653,29 @@ const triggerImport = () => {
   font-family: Consolas, monospace;
 }
 
+.settings-section {
+  margin-bottom: 16px;
+}
+
+.settings-section-title {
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.state-name-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.state-name-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .modal-footer-actions {
   display: flex;
   justify-content: space-between;
@@ -560,6 +691,146 @@ const triggerImport = () => {
   color: #ef4444;
   font-size: 13px;
   margin-bottom: 8px;
+}
+
+.symbol-rules-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.symbol-rules-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.symbol-rules-subtitle {
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.symbol-rule-list {
+  display: grid;
+  gap: 8px;
+}
+
+.symbol-rule-columns,
+.symbol-rule-card {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 2fr) 110px minmax(0, 2.2fr) 40px;
+  gap: 8px;
+  align-items: center;
+}
+
+.symbol-rule-columns {
+  padding: 0 10px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.symbol-rule-card {
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  padding: 10px;
+  background: #f8fbff;
+}
+
+.symbol-rule-index {
+  color: #1e3a8a;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.symbol-rule-fields {
+  display: contents;
+}
+
+.compact-field {
+  min-width: 0;
+}
+
+.compact-field-label {
+  margin-bottom: 4px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.compact-field-canonical :deep(.ant-input) {
+  font-family: "Noto Serif SC", "Source Han Serif SC", "STSong", "SimSun", serif;
+  font-size: 16px;
+  font-variant-ligatures: none;
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
+.compact-field-variants :deep(.ant-input) {
+  font-family: "Noto Serif SC", "Source Han Serif SC", "STSong", "SimSun", serif;
+  font-size: 15px;
+  font-variant-ligatures: none;
+  letter-spacing: 0.02em;
+}
+
+.template-textarea :deep(.ant-input) {
+  font-family: "Noto Serif SC", "Source Han Serif SC", "STSong", "SimSun", serif;
+  font-size: 15px;
+  line-height: 1.65;
+  font-variant-ligatures: none;
+  letter-spacing: 0.02em;
+}
+
+.symbol-rule-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.mobile-only {
+  display: none;
+}
+
+.symbol-rule-empty {
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  padding: 14px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 13px;
+}
+
+@media (max-width: 760px) {
+  .symbol-rules-header,
+  .modal-footer-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .symbol-rule-columns {
+    display: none;
+  }
+
+  .symbol-rule-card {
+    grid-template-columns: 40px minmax(0, 1fr) 36px;
+    align-items: start;
+  }
+
+  .symbol-rule-fields {
+    display: grid;
+    gap: 8px;
+  }
+
+  .compact-field-canonical {
+    max-width: 120px;
+  }
+
+  .mobile-only {
+    display: block;
+  }
 }
 
 /* 匹配日志 */

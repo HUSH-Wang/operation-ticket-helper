@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue';
+import { ref, onMounted, onUnmounted, nextTick, computed, watch } from 'vue';
 import {
   UndoOutlined,
   RedoOutlined,
@@ -7,18 +7,22 @@ import {
   ThunderboltOutlined
 } from '@ant-design/icons-vue';
 import { message, Modal } from 'ant-design-vue';
-import defaultData from '../templates/ticket_template.json';
 import {
   buildParseRegex,
   renderTemplate,
   clearVoltageCurrentText,
   getPrimaryTemplate,
   getTemplateVariants,
-} from '../utils/textUtils';
+  stripTextForMatch,
+  type SymbolRule,
+} from '../utils/textUtils.ts';
+import type { Task } from '../utils/taskSettings.ts';
 
 // ─── Props ─────────────────────────────────────────
 const props = defineProps<{
-  tasks: any[]
+  tasks: Task[],
+  stateNames: string[],
+  symbolRules: SymbolRule[],
 }>();
 
 // ─── 状态数据 ──────────────────────────────────────
@@ -89,17 +93,16 @@ const contextMenuStore = ref({
 });
 const contextMenuRef = ref<HTMLDivElement | null>(null); // 指向菜单 DOM 节点
 
-// 从 ticket_template.json 读取作为默认 fallback，再从 localStorage 中恢复
-const stateNames = ref<string[]>([...defaultData.stateNames]);
+const stateNames = ref<string[]>([...props.stateNames]);
 
 // 获取所有的待匹配正则项
 const getAllPatterns = () => {
-  const patterns: { task: any, si: number, rx: RegExp }[] = [];
+  const patterns: { task: Task, si: number, rx: RegExp }[] = [];
   for (const task of props.tasks) {
     for (let si = 0; si < (task.templates || []).length; si++) {
       for (const tmpl of getTemplateVariants(task.templates[si])) {
         try {
-          patterns.push({ task, si, rx: buildParseRegex(tmpl) });
+          patterns.push({ task, si, rx: buildParseRegex(tmpl, props.symbolRules) });
         } catch { /* skip bad regex */ }
       }
     }
@@ -241,7 +244,7 @@ const handleConvertState = (targetIdx: number) => {
     const trimmedLine = line.trim();
     if (trimmedLine.length === 0) return trimmedLine; 
 
-    const strippedForMatch = trimmedLine.replace(/[\s\t\u00A0\u200B]+/g, '');
+    const strippedForMatch = stripTextForMatch(trimmedLine);
     let matched = false;
     let convertedLine = trimmedLine;
 
@@ -323,14 +326,6 @@ const handleKeyDown = (e: KeyboardEvent) => {
 };
 
 onMounted(() => {
-  const savedTasks = localStorage.getItem('ticketTasks');
-  if (savedTasks) {
-    try {
-      const parsed = JSON.parse(savedTasks);
-      if (parsed.stateNames) stateNames.value = parsed.stateNames;
-    } catch (e) { /* ignore */ }
-  }
-
   const savedContent = localStorage.getItem('ticketEditorContent');
   if (savedContent) {
     textContent.value = savedContent;
@@ -343,6 +338,10 @@ onMounted(() => {
   saveTimer = setInterval(saveToLocal, SAVE_INTERVAL_MS);
   document.addEventListener('click', hideContextMenu);
 });
+
+watch(() => props.stateNames, (nextStateNames) => {
+  stateNames.value = [...nextStateNames];
+}, { deep: true });
 
 onUnmounted(() => {
   if (saveTimer) clearInterval(saveTimer);
