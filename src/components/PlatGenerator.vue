@@ -109,7 +109,11 @@ const generateText = () => {
     let regexes: RegExp[] | null = null;
     const getRegexes = () => {
       if (!regexes) {
-        regexes = Object.values(templates).map(t => buildParseRegex(t, props.symbolRules));
+        regexes = Object.values(templates).map(t => buildParseRegex(t, props.symbolRules, {
+          literalPlaceholders: {
+            screen: screenForReplace,
+          },
+        }));
       }
       return regexes;
     };

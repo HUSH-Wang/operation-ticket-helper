@@ -1,10 +1,11 @@
 {
   "name": "operation-ticket-helper",
   "private": true,
-  "version": "0.3",
+  "version": "0.4",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "test": "node scripts/regression-tests.mjs",
     "build": "vue-tsc && vite build",
     "build:single": "vue-tsc && vite build --mode singlefile",
     "preview": "vite preview"

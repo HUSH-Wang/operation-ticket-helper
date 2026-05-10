@@ -14,6 +14,10 @@ export interface SymbolRule {
     variants: string[];
 }
 
+export interface BuildParseRegexOptions {
+    literalPlaceholders?: Record<string, string | undefined>;
+}
+
 const MATCH_WHITESPACE_RE = /[\s\t\u00A0\u200B]+/g;
 const NUM_TOKEN = '\x00NUM\x00';
 const PLACEHOLDER_TOKEN_RE = /^\x00PH_([a-zA-Z0-9]+)\x00/;
@@ -90,7 +94,11 @@ export const getTemplateVariants = (templateEntry: TemplateEntry | undefined): s
  * @param {string} template 模板字符串
  * @returns {RegExp} 构建的正则表达式
  */
-export const buildParseRegex = (template: string, symbolRules: SymbolRule[] = []): RegExp => {
+export const buildParseRegex = (
+    template: string,
+    symbolRules: SymbolRule[] = [],
+    options: BuildParseRegexOptions = {},
+): RegExp => {
     const sanitizedTemplate = template
         .replace(/\{n\}/g, NUM_TOKEN)
         .replace(PLACEHOLDER_RE, (_, name) => `\x00PH_${name}\x00`)
@@ -114,7 +122,11 @@ export const buildParseRegex = (template: string, symbolRules: SymbolRule[] = []
 
         const placeholderMatch = sanitizedTemplate.slice(index).match(PLACEHOLDER_TOKEN_RE);
         if (placeholderMatch) {
-            pattern += `(?<${placeholderMatch[1]}>.+?)`;
+            const name = placeholderMatch[1];
+            const literalValue = options.literalPlaceholders?.[name];
+            pattern += literalValue !== undefined
+                ? buildLiteralPattern(stripTextForMatch(literalValue), symbolRules)
+                : `(?<${name}>.+?)`;
             index += placeholderMatch[0].length;
             continue;
         }

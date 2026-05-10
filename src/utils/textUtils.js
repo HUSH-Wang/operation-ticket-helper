@@ -34,7 +34,7 @@ export const getTemplateVariants = (templateEntry) => {
  * @param {string} template 模板字符串
  * @returns {RegExp} 构建的正则表达式
  */
-export const buildParseRegex = (template) => {
+export const buildParseRegex = (template, _symbolRules = [], options = {}) => {
     // Step1: 保护 {n} 和各占位符, 去除空白
     let r = template
         .replace(/\{n\}/g, '\x00NUM\x00')
@@ -50,7 +50,12 @@ export const buildParseRegex = (template) => {
 
     // Step3: 还原占位符为命名捕获组 / 数字通配
     r = r.replace(/\x00NUM\x00/g, '[\\d.]*');
-    r = r.replace(/\x00PH_([a-zA-Z0-9]+)\x00/g, (_, name) => `(?<${name}>.+?)`);
+    r = r.replace(/\x00PH_([a-zA-Z0-9]+)\x00/g, (_, name) => {
+        const literalValue = options.literalPlaceholders?.[name];
+        return literalValue !== undefined
+            ? escapeRegex((literalValue || '').replace(/[\s\t\u00A0\u200B]+/g, ''))
+            : `(?<${name}>.+?)`;
+    });
     return new RegExp('^' + r + '$');
 };
 
