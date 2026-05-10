@@ -4,6 +4,8 @@ import {
   UndoOutlined,
   RedoOutlined,
   DeleteOutlined,
+  FullscreenOutlined,
+  FullscreenExitOutlined,
   ThunderboltOutlined
 } from '@ant-design/icons-vue';
 import { message, Modal } from 'ant-design-vue';
@@ -28,6 +30,7 @@ const props = defineProps<{
 // ─── 状态数据 ──────────────────────────────────────
 const textContent = ref<string>('');
 const fontSize = ref<number>(14); // 默认字号 14px
+const isWideEditor = ref<boolean>(false);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const highlightLayerRef = ref<HTMLDivElement | null>(null);
 const highlightedLines = ref<Set<number>>(new Set());
@@ -117,6 +120,10 @@ const increaseFontSize = () => {
 
 const decreaseFontSize = () => {
   if (fontSize.value > MIN_FONT_SIZE) fontSize.value -= 2;
+};
+
+const toggleEditorWidth = () => {
+  isWideEditor.value = !isWideEditor.value;
 };
 
 // -- 历史记录快照 --
@@ -430,49 +437,57 @@ const clearVoltageCurrent = () => {
 </script>
 
 <template>
-  <div class="editor-wrap">
+  <div :class="['editor-wrap', { 'editor-wrap-wide': isWideEditor }]">
     <a-card class="main-card" :bordered="false">
       <!-- 头部：标题与清空按钮 -->
       <template #title>
         <div class="card-header">
           <span class="title-text">操作票编辑</span>
-          <a-button type="text" danger @click="clearContent" title="清空全部">
-            <template #icon><DeleteOutlined style="font-size: 18px;" /></template>
-          </a-button>
+          <div class="header-actions">
+            <a-tooltip :title="isWideEditor ? '恢复默认宽度' : '撑满页面宽度'">
+              <a-button type="text" @click="toggleEditorWidth">
+                <template #icon>
+                  <FullscreenExitOutlined v-if="isWideEditor" style="font-size: 18px;" />
+                  <FullscreenOutlined v-else style="font-size: 18px;" />
+                </template>
+              </a-button>
+            </a-tooltip>
+            <a-button type="text" danger @click="clearContent" title="清空全部">
+              <template #icon><DeleteOutlined style="font-size: 18px;" /></template>
+            </a-button>
+          </div>
         </div>
       </template>
 
-      <a-form layout="vertical">
-        <a-form-item label="操作工具栏（可直接对选中的文本行进行状态转换）" style="margin-bottom: 12px">
-          <a-space wrap>
-            <a-button-group>
-              <a-tooltip title="增大字号">
-                <a-button @click="increaseFontSize">A+</a-button>
-              </a-tooltip>
-              <a-tooltip title="减小字号">
-                <a-button @click="decreaseFontSize">A-</a-button>
-              </a-tooltip>
-            </a-button-group>
+      <div class="editor-toolbar">
+        <a-space wrap>
+          <a-button-group>
+            <a-tooltip title="增大字号">
+              <a-button @click="increaseFontSize">A+</a-button>
+            </a-tooltip>
+            <a-tooltip title="减小字号">
+              <a-button @click="decreaseFontSize">A-</a-button>
+            </a-tooltip>
+          </a-button-group>
 
-            <a-button-group>
-              <a-tooltip title="撤销">
-                <a-button @click="execUndo" :disabled="historyStack.length <= 1"><template #icon><UndoOutlined /></template></a-button>
-              </a-tooltip>
-              <a-tooltip title="重做">
-                <a-button @click="execRedo" :disabled="redoStack.length === 0"><template #icon><RedoOutlined /></template></a-button>
-              </a-tooltip>
-            </a-button-group>
+          <a-button-group>
+            <a-tooltip title="撤销">
+              <a-button @click="execUndo" :disabled="historyStack.length <= 1"><template #icon><UndoOutlined /></template></a-button>
+            </a-tooltip>
+            <a-tooltip title="重做">
+              <a-button @click="execRedo" :disabled="redoStack.length === 0"><template #icon><RedoOutlined /></template></a-button>
+            </a-tooltip>
+          </a-button-group>
 
-            <a-button @click="clearVoltageCurrent">清空电压电流</a-button>
-            
-            <a-button-group class="action-buttons">
-              <a-button v-for="(name, idx) in stateNames" :key="idx" type="default" @click="handleConvertState(idx)">
-                {{ name }}
-              </a-button>
-            </a-button-group>
-          </a-space>
-        </a-form-item>
-      </a-form>
+          <a-button @click="clearVoltageCurrent">清空电压电流</a-button>
+          
+          <a-button-group class="action-buttons">
+            <a-button v-for="(name, idx) in stateNames" :key="idx" type="default" @click="handleConvertState(idx)">
+              {{ name }}
+            </a-button>
+          </a-button-group>
+        </a-space>
+      </div>
 
       <!-- 编辑主体 -->
       <div class="editor-body">
@@ -529,6 +544,7 @@ const clearVoltageCurrent = () => {
   justify-content: center;
   padding: 8px 0;
   height: calc(100vh - 120px); /* 让页面撑满剩余空间 */
+  width: 100%;
 }
 
 .main-card {
@@ -541,6 +557,15 @@ const clearVoltageCurrent = () => {
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(10px);
   overflow: hidden;
+}
+
+.editor-wrap-wide {
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+.editor-wrap-wide .main-card {
+  max-width: none;
 }
 
 /* 覆盖 ant-card-body，使内容区撑满 */
@@ -557,6 +582,12 @@ const clearVoltageCurrent = () => {
   align-items: center;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .title-text {
   font-size: 20px;
   font-weight: 600;
@@ -564,6 +595,10 @@ const clearVoltageCurrent = () => {
   background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+}
+
+.editor-toolbar {
+  margin-bottom: 12px;
 }
 
 .action-buttons .ant-btn {

@@ -62,7 +62,16 @@ import hushImg from '../assets/hushDataUrl';
       <a-timeline>
         <a-timeline-item color="green">
           <p class="log-version">
-            <span>v0.4 (当前版本)</span>
+            <span>v0.5 (当前版本)</span>
+            <span class="log-date">2026.05.10</span>
+          </p>
+          <ul class="log-list">
+            <li>压板模板新增：保护压板文本生成页面新增“测量后投入”模板，支持生成与解析 <code>测量{screen}{plat}压板两端对地确无异极性电压后，投入</code>。</li>
+          </ul>
+        </a-timeline-item>
+        <a-timeline-item color="green">
+          <p class="log-version">
+            <span>v0.4</span>
             <span class="log-date">2026.05.07</span>
           </p>
           <ul class="log-list">
@@ -70,7 +79,7 @@ import hushImg from '../assets/hushDataUrl';
             <li>符号输出规范化：输入英文直引号或英文括号时，匹配成功后会自动按照主模板中的中文符号输出；模板中的 <code>/</code> 保持原样不参与转换。</li>
             <li>设置页增强：任务模板配置新增符号规则维护、导入导出与一键重置，并优化了模板与符号输入框的字体和紧凑布局，便于区分左右引号等细微符号。</li>
             <li>输入体验修复：解决设置页中输入中文引号、句号等符号时“光标移动但字符未录入”的问题，改为保存时再统一解析配置。</li>
-            <li>压板解析修复：修正解析已有操作步骤时，<code>{screen}</code> 与 <code>{plat}</code> 连续导致数字开头屏名首位被吞的问题；屏名输入框留空时继续按兼容策略解析，将中间文本作为压板名提取。</li>
+            <li>压板解析修复：修正解析已有操作步骤时，<code>{screen}</code> 与 <code>{plat}</code> 连续导致数字开头屏名首位被吞的问题；解析模式下禁用屏名输入框但保留页面内容，并固定将 <code>{screen}</code> 按空字符串处理，将中间文本作为压板名提取。</li>
           </ul>
         </a-timeline-item>
         <a-timeline-item color="green">

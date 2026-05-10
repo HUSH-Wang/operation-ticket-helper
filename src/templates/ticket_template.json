@@ -3,7 +3,8 @@
         "input": "投入{screen}{plat}压板",
         "exit": "退出{screen}{plat}压板",
         "checkInput": "检查{screen}{plat}压板确已投入",
-        "checkExit": "检查{screen}{plat}压板确已退出"
+        "checkExit": "检查{screen}{plat}压板确已退出",
+        "measureInput": "测量{screen}{plat}压板两端对地确无异极性电压后，投入"
     },
     "stateNames": [
         "合上/投入",

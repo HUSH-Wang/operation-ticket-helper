@@ -11,6 +11,14 @@ import {
 } from '../utils/textUtils.ts';
 
 const defaultTemplates = defaultData.platTemplates as Record<string, string>;
+const templateOptions = [
+  { key: 'input', label: '投入', settingsLabel: '投入模板' },
+  { key: 'exit', label: '退出', settingsLabel: '退出模板' },
+  { key: 'checkInput', label: '检查投入', settingsLabel: '检查投入模板' },
+  { key: 'checkExit', label: '检查退出', settingsLabel: '检查退出模板' },
+  { key: 'measureInput', label: '测量后投入', settingsLabel: '测量后投入模板' },
+] as const;
+
 const props = defineProps<{
   symbolRules: SymbolRule[]
 }>();
@@ -25,6 +33,19 @@ const outputLines = ref<any[]>([]);        // [{text: string, matched: boolean}]
 const hasPromptedParseError = ref<boolean>(false);
 const errorLineMsg = ref<string>('');
 
+const normalizeTemplates = (value: unknown): Record<string, string> => {
+  const normalized: Record<string, string> = { ...defaultTemplates };
+  if (value && typeof value === 'object') {
+    for (const option of templateOptions) {
+      const template = (value as Record<string, unknown>)[option.key];
+      if (typeof template === 'string') {
+        normalized[option.key] = template;
+      }
+    }
+  }
+  return normalized;
+};
+
 const templates = reactive<Record<string, string>>({ ...defaultTemplates });
 const isSettingsVisible = ref<boolean>(false);
 const editingTemplates = reactive<Record<string, string>>({ ...defaultTemplates });
@@ -34,8 +55,9 @@ onMounted(() => {
   if (saved) {
     try {
       const parsed = JSON.parse(saved);
-      Object.assign(templates, parsed);
-      Object.assign(editingTemplates, parsed);
+      const normalized = normalizeTemplates(parsed);
+      Object.assign(templates, normalized);
+      Object.assign(editingTemplates, normalized);
     } catch (e) {
       console.error('Failed to parse templates from localstorage', e);
     }
@@ -43,13 +65,15 @@ onMounted(() => {
 });
 
 // ─── 行级缓存 ────────────────────────────────────────────
-// 缓存 key 由"操作类型 + 屏名 + 4条模板"拼接，任意配置变化时自动失效
+const getScreenForReplace = () => inputMode.value === 'parse' ? '' : screenName.value.trim();
+
+// 缓存 key 由"输入模式 + 操作类型 + 实际参与替换的屏名 + 模板配置"拼接，任意配置变化时自动失效
 const basicLineCache = new Map<string, any>();   // platLine    -> { text, matched }
 const parseLineCache = new Map<string, any>();   // strippedLine -> { text, matched }
 let lastConfigKey: string | null = null;
 const getConfigKey = () =>
-  [operationType.value, screenName.value,
-   templates.input, templates.exit, templates.checkInput, templates.checkExit, JSON.stringify(props.symbolRules)].join('\x01');
+  [inputMode.value, operationType.value, getScreenForReplace(),
+   ...templateOptions.map(option => templates[option.key]), JSON.stringify(props.symbolRules)].join('\x01');
 
 const removeInlineSpaces = () => {
   if (platText.value) {
@@ -69,8 +93,8 @@ const generateText = () => {
     lastConfigKey = currentConfigKey;
   }
 
-  const currentTemplate = templates[operationType.value];
-  const screenForReplace = screenName.value.trim();
+  const currentTemplate = templates[operationType.value] ?? '';
+  const screenForReplace = getScreenForReplace();
 
   // resultLines: [{text, matched}]
   const resultLines = [];
@@ -188,7 +212,9 @@ const openSettings = () => {
 };
 
 const saveSettings = () => {
-  Object.assign(templates, editingTemplates);
+  const normalized = normalizeTemplates(editingTemplates);
+  Object.assign(templates, normalized);
+  Object.assign(editingTemplates, normalized);
   localStorage.setItem('ticketPlatTemplates', JSON.stringify(templates));
   isSettingsVisible.value = false;
   message.success('模板保存成功');
@@ -202,14 +228,14 @@ const resetSettingsToDefault = () => {
     okText: '重置',
     cancelText: '取消',
     onOk() {
-      Object.assign(editingTemplates, defaultTemplates);
+      Object.assign(editingTemplates, normalizeTemplates(defaultTemplates));
       message.success('已恢复默认规则，请点击保存生效');
     },
   });
 };
 
 const exportData = () => {
-  const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(editingTemplates, null, 2));
+  const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(normalizeTemplates(editingTemplates), null, 2));
   const a = document.createElement('a');
   a.setAttribute('href', dataStr);
   a.setAttribute('download', 'plat_templates.json');
@@ -232,10 +258,7 @@ const triggerImport = () => {
         const result = reader.result as string;
         const parsed = JSON.parse(result);
         if (parsed && typeof parsed === 'object') {
-          if (parsed.input !== undefined) editingTemplates.input = parsed.input;
-          if (parsed.exit !== undefined) editingTemplates.exit = parsed.exit;
-          if (parsed.checkInput !== undefined) editingTemplates.checkInput = parsed.checkInput;
-          if (parsed.checkExit !== undefined) editingTemplates.checkExit = parsed.checkExit;
+          Object.assign(editingTemplates, normalizeTemplates(parsed));
           message.success('导入成功，请点击保存生效配置');
         } else {
           message.error('无效的JSON数据格式');
@@ -263,15 +286,19 @@ const triggerImport = () => {
       <a-form layout="vertical">
         <a-form-item label="操作类型">
           <a-radio-group v-model:value="operationType" button-style="solid">
-            <a-radio-button value="input">投入</a-radio-button>
-            <a-radio-button value="exit">退出</a-radio-button>
-            <a-radio-button value="checkInput">检查投入</a-radio-button>
-            <a-radio-button value="checkExit">检查退出</a-radio-button>
+            <a-radio-button v-for="option in templateOptions" :key="option.key" :value="option.key">
+              {{ option.label }}
+            </a-radio-button>
           </a-radio-group>
         </a-form-item>
 
         <a-form-item label="保护屏名 {screen}">
-          <a-input v-model:value="screenName" placeholder="例如：110kV 主变保护屏" allowClear />
+          <a-input
+            v-model:value="screenName"
+            placeholder="例如：110kV 主变保护屏"
+            allowClear
+            :disabled="inputMode === 'parse'"
+          />
         </a-form-item>
 
         <a-form-item label="压板输入模式">
@@ -324,17 +351,12 @@ const triggerImport = () => {
         </p>
       </div>
       <a-form layout="vertical">
-        <a-form-item label="投入模板">
-          <a-textarea v-model:value="editingTemplates.input" :rows="2" />
-        </a-form-item>
-        <a-form-item label="退出模板">
-          <a-textarea v-model:value="editingTemplates.exit" :rows="2" />
-        </a-form-item>
-        <a-form-item label="检查投入模板">
-          <a-textarea v-model:value="editingTemplates.checkInput" :rows="2" />
-        </a-form-item>
-        <a-form-item label="检查退出模板">
-          <a-textarea v-model:value="editingTemplates.checkExit" :rows="2" />
+        <a-form-item
+          v-for="option in templateOptions"
+          :key="option.key"
+          :label="option.settingsLabel"
+        >
+          <a-textarea v-model:value="editingTemplates[option.key]" :rows="2" />
         </a-form-item>
       </a-form>
       <template #footer>
