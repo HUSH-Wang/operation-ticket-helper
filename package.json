@@ -7,7 +7,7 @@
     "dev": "vite",
     "test": "node scripts/regression-tests.mjs",
     "build": "vue-tsc && vite build",
-    "build:single": "vue-tsc && vite build --mode singlefile",
+    "build:single": "vue-tsc && vite build --mode singlefile && node scripts/rename-singlefile.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

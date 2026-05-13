@@ -9,6 +9,7 @@ import {
   ThunderboltOutlined
 } from '@ant-design/icons-vue';
 import { message, Modal } from 'ant-design-vue';
+import { storageKey } from '../config/appConfig.ts';
 import {
   buildParseRegex,
   renderTemplate,
@@ -19,6 +20,8 @@ import {
   type SymbolRule,
 } from '../utils/textUtils.ts';
 import type { Task } from '../utils/taskSettings.ts';
+
+const EDITOR_CONTENT_STORAGE_KEY = storageKey('ticketEditorContent');
 
 // ─── Props ─────────────────────────────────────────
 const props = defineProps<{
@@ -211,7 +214,7 @@ const clearContent = () => {
 };
 
 const saveToLocal = () => {
-  localStorage.setItem('ticketEditorContent', textContent.value);
+  localStorage.setItem(EDITOR_CONTENT_STORAGE_KEY, textContent.value);
 };
 
 // ─── 核心：状态转换 ─────────────────────────────────────
@@ -333,7 +336,7 @@ const handleKeyDown = (e: KeyboardEvent) => {
 };
 
 onMounted(() => {
-  const savedContent = localStorage.getItem('ticketEditorContent');
+  const savedContent = localStorage.getItem(EDITOR_CONTENT_STORAGE_KEY);
   if (savedContent) {
     textContent.value = savedContent;
   }

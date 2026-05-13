@@ -11,6 +11,7 @@ import {
   InfoCircleOutlined
 } from '@ant-design/icons-vue';
 import hushImg from './assets/hushDataUrl';
+import { appConfig } from './config/appConfig.ts';
 import type { SymbolRule } from './utils/textUtils.ts';
 import {
   getDefaultTaskSettings,
@@ -49,7 +50,7 @@ const handleSaveTaskSettings = (newTasks: Task[], newStateNames: string[], newSy
     <div class="app-header">
       <div class="header-left">
         <img :src="hushImg" alt="logo" class="logo-img" />
-        <span class="logo-text">操作票助手 <span class="version-tag">v0.5</span></span>
+        <span class="logo-text">{{ appConfig.title }} <span class="version-tag">v0.5</span></span>
       </div>
       <a-menu class="header-menu" v-model:selectedKeys="currentMenu" mode="horizontal">
         <a-menu-item key="editor">

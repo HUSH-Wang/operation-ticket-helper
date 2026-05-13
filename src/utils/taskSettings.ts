@@ -1,4 +1,5 @@
 import defaultData from '../templates/ticket_template.json';
+import { storageKey } from '../config/appConfig.ts';
 import type { SymbolRule, TemplateEntry } from './textUtils.ts';
 
 export interface Task {
@@ -13,7 +14,7 @@ export interface TaskSettingsData {
   symbolRules: SymbolRule[];
 }
 
-export const TASK_SETTINGS_STORAGE_KEY = 'ticketTasks';
+export const TASK_SETTINGS_STORAGE_KEY = storageKey('ticketTasks');
 
 const cloneJson = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 

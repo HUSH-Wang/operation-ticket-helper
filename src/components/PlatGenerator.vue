@@ -2,6 +2,7 @@
 import { ref, reactive, watch, onMounted } from 'vue';
 import { SettingOutlined, CopyOutlined, ReloadOutlined } from '@ant-design/icons-vue';
 import { message, Modal } from 'ant-design-vue';
+import { storageKey } from '../config/appConfig.ts';
 import defaultData from '../templates/ticket_template.json';
 import {
   buildParseRegex,
@@ -11,6 +12,7 @@ import {
 } from '../utils/textUtils.ts';
 
 const defaultTemplates = defaultData.platTemplates as Record<string, string>;
+const PLAT_TEMPLATES_STORAGE_KEY = storageKey('ticketPlatTemplates');
 const templateOptions = [
   { key: 'input', label: '投入', settingsLabel: '投入模板' },
   { key: 'exit', label: '退出', settingsLabel: '退出模板' },
@@ -51,7 +53,7 @@ const isSettingsVisible = ref<boolean>(false);
 const editingTemplates = reactive<Record<string, string>>({ ...defaultTemplates });
 
 onMounted(() => {
-  const saved = localStorage.getItem('ticketPlatTemplates');
+  const saved = localStorage.getItem(PLAT_TEMPLATES_STORAGE_KEY);
   if (saved) {
     try {
       const parsed = JSON.parse(saved);
@@ -215,7 +217,7 @@ const saveSettings = () => {
   const normalized = normalizeTemplates(editingTemplates);
   Object.assign(templates, normalized);
   Object.assign(editingTemplates, normalized);
-  localStorage.setItem('ticketPlatTemplates', JSON.stringify(templates));
+  localStorage.setItem(PLAT_TEMPLATES_STORAGE_KEY, JSON.stringify(templates));
   isSettingsVisible.value = false;
   message.success('模板保存成功');
   generateText();
